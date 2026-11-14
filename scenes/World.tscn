@@ -19,6 +19,8 @@
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_hab"]
 size = Vector2(40, 40)
 
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_c0d7e"]
+
 [node name="World" type="Node2D" unique_id=1387589682]
 script = ExtResource("1_gen")
 
@@ -312,23 +314,13 @@ offset_left = 16.0
 offset_top = 16.0
 offset_right = 206.0
 offset_bottom = 81.0
+theme_override_styles/panel = SubResource("StyleBoxEmpty_c0d7e")
 
 [node name="VBoxContainer" type="VBoxContainer" parent="UI/HUD/OxygenPanel" unique_id=1080170114]
 layout_mode = 2
 
-[node name="OxygenTitle" type="Label" parent="UI/HUD/OxygenPanel/VBoxContainer" unique_id=310882999]
+[node name="OxygenBar" type="TextureRect" parent="UI/HUD/OxygenPanel/VBoxContainer" unique_id=1829863228]
+custom_minimum_size = Vector2(160, 40)
 layout_mode = 2
-theme_override_font_sizes/font_size = 12
-text = "OXYGEN LEVEL
-"
-
-[node name="OxygenBar" type="ProgressBar" parent="UI/HUD/OxygenPanel/VBoxContainer" unique_id=2131154773]
-custom_minimum_size = Vector2(160, 12)
-layout_mode = 2
-value = 100.0
-show_percentage = false
-
-[node name="OxygenValue" type="Label" parent="UI/HUD/OxygenPanel/VBoxContainer" unique_id=40515444]
-layout_mode = 2
-text = "100% O2"
-horizontal_alignment = 1
+expand_mode = 1
+stretch_mode = 5
