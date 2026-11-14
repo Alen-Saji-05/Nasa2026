@@ -1,7 +1,10 @@
 extends SceneTree
-## Automated check of the map generator. Run from the project folder:
+## Automated check of the surface map generator. Run from the project folder:
 ##   godot --headless --path . --script res://tools/test_world.gd
 ## Prints PASS / FAIL lines and exits with code 1 if anything failed.
+##
+## The surface is the base area: hab, build pads, launch pad, wreck, cave
+## entrances and a few starter deposits. (The caves have their own test.)
 
 const SCENE := "res://scenes/World.tscn"
 const SEEDS_TO_TRY := [1, 2, 3, 7, 42, 99, 2026, 31337, 5, 11, 123, 777, 4242, 9001]
@@ -38,10 +41,12 @@ func _run() -> void:
 	_check("same seed gives the same map", _signature(b) == sig_a)
 	b.map_seed = a.map_seed + 1
 	b.generate()
-	_check("another seed gives another map", _signature(b) != sig_a)
+	_check("another seed gives another map (different decoration)", _signature(b) != sig_a)
 
 	_check_map(a, "seed %d" % a.map_seed)
 	_check_base(a)
+	_check_entrances(a)
+	_check_pads(a)
 
 	# --- the rules hold for other seeds too ---
 	for s: int in SEEDS_TO_TRY:
@@ -59,13 +64,17 @@ func _check_map(world: Node, label: String) -> void:
 	var size: Vector2i = world.MAP_SIZE
 	var walls: TileMapLayer = world.get_node("Walls")
 
-	_check("%s: %d metal and %d ice nodes" % [label, r.metal_nodes, r.ice_nodes],
-		r.metal_nodes == Config.METAL_NODE_COUNT and r.ice_nodes == Config.ICE_NODE_COUNT)
-	_check("%s: every node can be reached on foot from the spawn" % label, r.unreachable_nodes == 0)
-	_check("%s: no node near the base" % label, r.nodes_near_base == 0)
-	_check("%s: nearest deposit is %d%% of the farthest walk (need >= %d%%)" % [
-		label, roundi(r.nearest_share * 100.0), roundi(Config.MIN_REWARD_DISTANCE * 100.0)],
-		r.nearest_share >= Config.MIN_REWARD_DISTANCE)
+	_check("%s: %d build pads and %d cave entrances" % [label, r.build_pads, r.entrances],
+		r.build_pads == Config.BUILD_PAD_COUNT and r.entrances == Config.CAVES.size())
+	_check("%s: %d metal and %d ice starter deposits" % [label, r.metal_nodes, r.ice_nodes],
+		r.metal_nodes == Config.SURFACE_METAL_NODES and r.ice_nodes == Config.SURFACE_ICE_NODES)
+	_check("%s: hab, pads, launch pad, wreck, entrances and deposits can all be reached on foot %s" % [label, str(r.unreachable)],
+		r.unreachable.is_empty() and r.unreachable_nodes == 0)
+	_check("%s: no deposit near the base" % label, r.nodes_near_base == 0)
+	_check("%s: no craters near the hab" % label, r.craters_near_base == 0)
+	_check("%s: no dead space, biggest empty patch is %dx%d (limit %d)" % [
+		label, r.max_empty_square, r.max_empty_square, Config.SURFACE_MAX_EMPTY_SQUARE],
+		r.max_empty_square <= Config.SURFACE_MAX_EMPTY_SQUARE)
 
 	var border_ok := true
 	for x in size.x:
@@ -76,28 +85,16 @@ func _check_map(world: Node, label: String) -> void:
 			border_ok = false
 	_check("%s: solid wall all around the map" % label, border_ok)
 
-	# Metal and ice live in different chambers.
-	var kinds_per_chamber := {}
-	var mixed := false
-	for n in world.get_node("Entities/Nodes").get_children():
-		var tile_pos := Vector2i((n as Node2D).position / world.TILE) - (world.GRID_ORIGIN as Vector2i)
-		var key := tile_pos / (world.CELL_SIZE as int)
-		var kind: String = n.get_meta("kind", "")
-		if kinds_per_chamber.get(key, kind) != kind:
-			mixed = true
-		kinds_per_chamber[key] = kind
-	_check("%s: metal and ice are in separate chambers (%d chambers)" % [label, r.reward_chambers], not mixed)
-
 
 func _check_base(world: Node) -> void:
-	var clearing: Rect2i = world.CLEARING
+	var floor_rect: Rect2i = world.FLOOR
 	var tile: int = world.TILE
-	var area := Rect2(clearing.position * tile, clearing.size * tile)
+	var area := Rect2(floor_rect.position * tile, floor_rect.size * tile)
 	var rocket := world.get_node_or_null("Entities/BrokenRocket") as Node2D
 	var pad := world.get_node_or_null("LaunchPad") as Node2D
 	var hab := world.get_node_or_null("Entities/Hab") as Node2D
 	var player := world.get_node_or_null("Entities/Player") as Node2D
-	_check("base: hab, launch pad, broken rocket and player are all in the clearing",
+	_check("base: hab, launch pad, broken rocket and player are all on the map floor",
 		rocket != null and pad != null and hab != null and player != null
 		and area.has_point(rocket.position - Vector2(0, 4)) and area.has_point(pad.position)
 		and area.has_point(hab.position) and area.has_point(player.position))
@@ -105,11 +102,62 @@ func _check_base(world: Node) -> void:
 		rocket != null and rocket.get_node_or_null("Smoke") is CPUParticles2D
 		and rocket.get_node_or_null("Sparks") is CPUParticles2D
 		and rocket.get_node_or_null("CollisionShape2D") is CollisionShape2D)
-	var hazards_in_base := 0
-	for c in world.get_node("GroundDecor").get_children():
-		if c.name.begins_with("Crater") and area.grow(tile * 4).has_point((c as Node2D).position):
-			hazards_in_base += 1
-	_check("base: no craters in or next to the clearing", hazards_in_base == 0)
+	_check("base: the launch pad is the build pad for the Ascent vehicle",
+		pad != null and pad.get("pad_type") == "launch" and pad.get("pad_id") == "launch")
+
+
+func _check_entrances(world: Node) -> void:
+	var tile: int = world.TILE
+	var walls: TileMapLayer = world.get_node("Walls")
+	var wanted: Array = Config.CAVES.map(func(c: Dictionary) -> String: return c.id)
+	var found: Array = []
+	var parts_ok := true
+	var placed_ok := true
+	for e in world.get_node("CaveEntrances").get_children():
+		found.append(e.get("cave_id"))
+		var exit_marker := e.get_node_or_null("Exit") as Node2D
+		if not (e is Area2D) or e.get_node_or_null("Mouth") == null or e.get_node_or_null("CollisionShape2D") == null or exit_marker == null:
+			parts_ok = false
+			continue
+		# The mouth is in solid rock, the exit marker and the tile in front are open floor.
+		var front := Vector2i(((e as Node2D).position + Vector2(0, tile * 0.5)) / tile)
+		var exit_tile := Vector2i(((e as Node2D).position + exit_marker.position) / tile)
+		if walls.get_cell_source_id(front + Vector2i.UP) == -1 or walls.get_cell_source_id(front) != -1 or walls.get_cell_source_id(exit_tile) != -1:
+			placed_ok = false
+	found.sort()
+	wanted.sort()
+	_check("entrances: one for each cave in Config.CAVES %s" % str(found), found == wanted)
+	_check("entrances: each has a mouth, a trigger and an exit marker", parts_ok)
+	_check("entrances: mouth in the cliff, open floor in front, exit marker on open floor", placed_ok)
+
+
+func _check_pads(world: Node) -> void:
+	var tile: int = world.TILE
+	var walls: TileMapLayer = world.get_node("Walls")
+	var ids := {}
+	var rects: Array[Rect2] = []
+	var clear := true
+	for p in world.get_node("BuildPads").get_children():
+		ids[p.get("pad_id")] = true
+		var size := Vector2(world.PAD_SIZE, world.PAD_SIZE) * tile
+		var rect := Rect2((p as Node2D).position - size * 0.5, size)
+		for other in rects:
+			if rect.intersects(other):
+				clear = false
+		rects.append(rect)
+		# No rock under a pad, and nothing standing on it.
+		for x in world.PAD_SIZE:
+			for y in world.PAD_SIZE:
+				if walls.get_cell_source_id(Vector2i(rect.position / tile) + Vector2i(x, y)) != -1:
+					clear = false
+		for path: String in ["Entities/Decor", "Entities/Nodes", "GroundDecor"]:
+			for n in world.get_node(path).get_children():
+				if n.name.begins_with("Footprints"):
+					continue
+				if rect.grow(tile * 0.5).has_point((n as Node2D).position):
+					clear = false
+	_check("pads: every pad has its own id (%d ids)" % ids.size(), ids.size() == Config.BUILD_PAD_COUNT)
+	_check("pads: no rock, deposit or crater on or right next to a pad, and no pads overlap", clear)
 
 
 ## Everything that defines the map, as one comparable value.
@@ -121,7 +169,7 @@ func _signature(world: Node) -> int:
 		cells.sort()
 		for c in cells:
 			parts.append([c, layer.get_cell_atlas_coords(c), layer.get_cell_alternative_tile(c)])
-	for path: String in ["Entities/Nodes", "Entities/Decor", "GroundDecor", "Cliffs"]:
+	for path: String in ["Entities/Nodes", "Entities/Decor", "GroundDecor", "Cliffs", "BuildPads", "CaveEntrances"]:
 		var container := world.get_node_or_null(path)
 		if container == null:
 			parts.append(path + " missing")

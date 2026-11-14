@@ -1,6 +1,6 @@
 class_name ResourceNode
 extends Sprite2D
-## A metal or ice deposit. The player harvests it with E (see harvester.gd).
+## A metal or ice deposit. The player harvests it with E (see harvester.gd, the Interactor).
 ## It has a few uses (charges). When they are gone it shows the depleted art.
 ## The map generator (world_gen.gd) creates these.
 
@@ -17,11 +17,31 @@ const SPARKLE_NAME := "Sparkle"
 
 @export_enum("metal", "ice") var kind: String = "metal"
 @export var charges_left: int = Config.NODE_CHARGES
+## Stable name ("surface/Metal01", "ice/L2/Ice01"). With an id the deposit
+## remembers its uses when the player leaves and comes back.
+@export var node_id: String = ""
 
 
 func _ready() -> void:
 	add_to_group(GROUP)
+	add_to_group(Interactor.GROUP)
+	if node_id != "":
+		charges_left = GameState.node_charges.get(node_id, charges_left)
 	_refresh()
+
+
+# --- Used by the player's Interactor (E key) ---
+
+func interact(player: Node2D) -> void:
+	var text := harvest()
+	if text != "":
+		var color := Color(0.75, 0.93, 1.0) if kind == "ice" else Color(1.0, 0.9, 0.7)
+		FloatingText.spawn(get_tree().current_scene, player.global_position + Vector2(0, -20), text, color)
+
+
+## Full deposits win over empty ones when both are in range.
+func interact_penalty() -> float:
+	return 1000.0 if is_empty() else 0.0
 
 
 func is_empty() -> bool:
@@ -54,6 +74,8 @@ func harvest() -> String:
 
 	GameState.consume_oxygen(Config.O2_HARVEST_COST)
 	charges_left -= 1
+	if node_id != "":
+		GameState.node_charges[node_id] = charges_left
 	_refresh()
 	return text
 

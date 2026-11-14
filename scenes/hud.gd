@@ -58,6 +58,8 @@ const MESSAGE_SECONDS := 2.5
 
 var _blink_tweens := {}        # bar -> Tween, only while that bar is blinking
 var _message_tween: Tween
+var _location_label: Label
+var _power_label: Label
 
 
 func _ready() -> void:
@@ -71,6 +73,11 @@ func _ready() -> void:
 	GameState.metal_changed.connect(update_metal)
 	GameState.message.connect(show_message)
 	GameState.game_ended.connect(_on_game_ended)
+	GameState.location_changed.connect(show_location)
+	GameState.power_changed.connect(update_power)
+	_make_location_label()
+	show_location(GameState.location_name())
+	update_power()
 
 	update_oxygen(GameState.oxygen)
 	update_water(GameState.water, GameState.water_limit)
@@ -95,6 +102,41 @@ func update_metal(value: int) -> void:
 	metal_digits[0].texture = DIGITS[shown / 100]
 	metal_digits[1].texture = DIGITS[(shown / 10) % 10]
 	metal_digits[2].texture = DIGITS[shown % 10]
+
+
+## Where the player is ("Surface", "Ice Cave L2"), top right.
+func show_location(place: String) -> void:
+	_location_label.text = place
+
+
+## Power line under the location: what is made and used, and the battery.
+func update_power() -> void:
+	var net := GameState.power_made - GameState.power_used
+	_power_label.text = "Power %s%.1f/s   Battery %d/%d" % [
+		"+" if net >= 0.0 else "", net, roundi(GameState.battery_charge), roundi(GameState.battery_capacity())]
+	_power_label.add_theme_color_override("font_color",
+		Color(1.0, 0.55, 0.45) if net < 0.0 and GameState.battery_charge < 5.0 else Color(1.0, 0.92, 0.75))
+
+
+func _make_location_label() -> void:
+	_location_label = Label.new()
+	_location_label.name = "Location"
+	_location_label.add_theme_font_size_override("font_size", 18)
+	_location_label.add_theme_color_override("font_color", Color(1.0, 0.92, 0.75))
+	_location_label.add_theme_color_override("font_outline_color", Color(0.12, 0.05, 0.04))
+	_location_label.add_theme_constant_override("outline_size", 6)
+	_location_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_location_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	_location_label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_location_label.offset_right = -16
+	_location_label.offset_top = 12
+	add_child(_location_label)
+
+	_power_label = _location_label.duplicate() as Label
+	_power_label.name = "Power"
+	_power_label.add_theme_font_size_override("font_size", 14)
+	_power_label.offset_top = 38
+	add_child(_power_label)
 
 
 func show_message(text: String) -> void:
@@ -140,6 +182,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	var key := event as InputEventKey
 	if key != null and key.pressed and not key.echo and key.physical_keycode == KEY_R:
+		# Back to the title screen; it resets the game when Play is pressed.
 		GameState.reset()
 		get_tree().paused = false
-		get_tree().reload_current_scene()
+		get_tree().change_scene_to_file(Config.TITLE_SCENE)

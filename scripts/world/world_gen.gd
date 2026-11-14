@@ -1,53 +1,81 @@
 @tool
 extends Node2D
-## Builds the Mars map: a base clearing (hab, launch pad, crashed rocket) and a
-## network of cliff-lined corridors that lead to far-away reward chambers.
+## Builds the SURFACE map: the base around the crash site.
+##
+## What is on it:
+##   - the hab on a sand plaza, with a street running past it
+##   - marked BUILD PADS on both sides of the street (machines go there)
+##   - the launch pad on its own plaza at the east end of the street
+##   - the crashed rocket in the north-west
+##   - one dark CAVE ENTRANCE per cave in Config.CAVES, each at the end of a trail
+##   - a few starter deposits far from the hab (the rest of the loot is in the caves)
+##   - rocks, rock pillars, craters and debris, so no part of the floor is empty
+##
+## The base layout is fixed (the constants below). The seed only changes the
+## decoration: ground texture, the rough rock border and what fills the gaps.
 ##
 ## In the editor: select the World node and click "Generate Map" in the Inspector.
-##   The result is saved into World.tscn, so you can then touch up tiles by hand.
+##   The result is saved into World.tscn. Do not edit World.tscn by hand.
 ##   (From a terminal: godot --headless --path . --script res://tools/bake_world.gd)
 ## When the game runs: if Ground is empty, the map is generated automatically.
-## Same seed = same map every time (so balance is testable).
-##
-## How the layout is made:
-##   1. The map is split into a coarse grid of cells. Each cell gets one point.
-##   2. A maze is grown over the cells, starting at the hub next to the clearing.
-##      It grows as 3 branches of similar size. A few extra links make loops.
-##   3. Every maze link becomes a corridor. Every dead end becomes a chamber.
-##   4. The far chambers get the ice and metal. The near ones stay empty.
-##   5. Craters and rocks are put on the corridors, more on the way to the best rewards.
 
 # ---------------------------------------------------------------------------
-# Layout tuning (reward amounts and the crater O2 penalty are in config.gd)
+# Layout (tile coordinates). Counts and rules are in config.gd.
 # ---------------------------------------------------------------------------
 const TILE := 16
-const MAP_SIZE := Vector2i(96, 64)          # in tiles -> 1536 x 1024 pixels
-const CELL_SIZE := 8                         # tiles per coarse cell (corridor spacing)
-const GRID_SIZE := Vector2i(12, 7)           # cells; GRID_SIZE * CELL_SIZE must fit in MAP_SIZE
-const GRID_ORIGIN := Vector2i(0, 4)          # tile of the grid's top-left corner
-const CELL_JITTER := 1                       # how far a cell's point may move off-centre (winding)
-const CORRIDOR_WIDTH := 3                    # tiles
-const CHAMBER_SIZE := 5                      # tiles, dead-end chambers are this big
-const BRANCH_RANDOMNESS := 0.15              # 0 = long winding corridors, 1 = many short dead ends
-const LOOP_COUNT := 2                        # extra links that create loops (shortcuts)
-const MAX_REWARD_CHAMBERS := 9               # only the farthest dead ends hold rewards
-const GUARDED_CHAMBERS := 3                  # best chambers get a corridor-wide crater + rock chokepoint
-const LAYOUT_ATTEMPTS := 30                  # layouts tried until enough far dead ends exist
-const CRATER_DENSITY := 0.45                 # chance of a crater on an ordinary corridor
+const MAP_SIZE := Vector2i(48, 34)          # in tiles -> 768 x 544 pixels
+const FLOOR := Rect2i(3, 5, 42, 26)         # the walkable area before rocks are added
+const BORDER_ROUGHNESS := 2                  # how many tiles the rock border may bulge inward
 
-# The base clearing: hab, spawn, launch pad and crashed rocket. No hazards, no rewards.
-const CLEARING := Rect2i(1, 23, 14, 10)     # tiles (x, y, width, height)
-const BASE_SAFE_RADIUS := 10                 # tiles around the clearing with no rewards, even behind a wall
-const CLEARING_CELLS := Rect2i(0, 2, 2, 2)  # the coarse cells the clearing sits in (no maze there)
-const HUB_CELL := Vector2i(2, 3)             # first junction outside the clearing
-const HUB_TILE := Vector2i(20, 30)           # the exit corridor runs along this row
-const HAB_TILE := Vector2i(4, 29)
-const LAUNCH_PAD_TILE := Vector2i(10, 30)
-const SPAWN_TILE := Vector2i(6, 27)
-const ROCKET_TILE := Vector2i(9, 25)         # bottom-centre of the crashed rocket
-const PAD_PLAZA := Rect2i(8, 28, 5, 5)      # sand square under the launch pad
+const STREET_Y := 17                         # the main street runs along this row
+const HAB_TILE := Vector2i(23, 14)
+const HAB_PLAZA := Rect2i(21, 12, 5, 5)     # sand square under the hab
+const SPAWN_TILE := Vector2i(23, 17)         # on the street, in front of the hab
+const LAUNCH_PAD_TILE := Vector2i(37, 17)
+const PAD_PLAZA := Rect2i(35, 15, 5, 5)     # sand square under the launch pad
+const ROCKET_TILE := Vector2i(10, 9)         # bottom-centre of the crashed rocket
+
+## Top-left tile of every build pad (each pad is PAD_SIZE x PAD_SIZE tiles).
+## The first Config.BUILD_PAD_COUNT entries are used.
+const PAD_SIZE := 2
+const BUILD_PAD_TILES: Array[Vector2i] = [
+	Vector2i(9, 15), Vector2i(13, 15), Vector2i(17, 15), Vector2i(27, 15), Vector2i(31, 15),   # north of the street
+	Vector2i(9, 18), Vector2i(13, 18), Vector2i(17, 18), Vector2i(23, 18), Vector2i(27, 18),   # south of the street
+]
+
+## Solid rock masses inside the floor. The cave mouths sit in their south faces.
+const ROCK_BLOCKS: Array[Rect2i] = [
+	Rect2i(39, 5, 6, 6),                     # north-east corner (Ore Cave)
+	Rect2i(17, 23, 8, 4),                    # outcrop south of the base (Deep Cave)
+]
+
+## Cave entrances. "tile" is the floor tile right in front of the mouth; the mouth
+## is in the cliff just north of it. Ids must match Config.CAVES.
+const ENTRANCES: Array[Dictionary] = [
+	{"cave": "ice", "tile": Vector2i(29, 5)},
+	{"cave": "ore", "tile": Vector2i(41, 11)},
+	{"cave": "deep", "tile": Vector2i(20, 27)},
+]
+
+## Sand trails, as corner points. Each one is 1 tile wide.
+const TRAILS: Array = [
+	[Vector2i(6, 17), Vector2i(34, 17)],                                              # the main street
+	[Vector2i(12, 10), Vector2i(12, 17)],                                             # to the wreck
+	[Vector2i(29, 5), Vector2i(29, 17)],                                              # to the Ice Cave
+	[Vector2i(37, 14), Vector2i(37, 12), Vector2i(41, 12), Vector2i(41, 11)],         # to the Ore Cave
+	[Vector2i(20, 17), Vector2i(20, 21), Vector2i(15, 21), Vector2i(15, 28), Vector2i(20, 28), Vector2i(20, 27)],  # to the Deep Cave
+	[Vector2i(15, 28), Vector2i(8, 28)],                                              # to the starter ice
+	[Vector2i(37, 20), Vector2i(37, 26), Vector2i(41, 26)],                           # to the starter metal
+]
+
+## Where starter deposits may go. The first Config.SURFACE_*_NODES of each are used.
+const METAL_SPOTS: Array[Vector2i] = [Vector2i(43, 25), Vector2i(42, 28), Vector2i(44, 27)]
+const ICE_SPOTS: Array[Vector2i] = [Vector2i(6, 27), Vector2i(5, 29)]
+const ICE_CRYSTAL_TILES: Array[Vector2i] = [Vector2i(4, 27), Vector2i(7, 29)]   # decoration next to the ice
+
 const FOOTPRINT_TILES: Array[Vector2i] = [
-	Vector2i(7, 29), Vector2i(6, 31), Vector2i(5, 26), Vector2i(12, 26), Vector2i(13, 28), Vector2i(3, 24)]
+	Vector2i(11, 11), Vector2i(13, 13), Vector2i(21, 18), Vector2i(22, 20),
+	Vector2i(28, 8), Vector2i(30, 11), Vector2i(36, 13), Vector2i(26, 16)]
 
 const SOURCE_ID := 0                         # the atlas inside mars_tileset.tres
 
@@ -82,46 +110,49 @@ const TRANSPOSE := TileSetAtlasSource.TRANSFORM_TRANSPOSE
 
 const TEX_METAL := preload("res://art/decor/metal_ore_full.png")
 const TEX_ICE := preload("res://art/decor/ice_deposit_full.png")
+const TEX_ICE_CRYSTAL := preload("res://art/decor/ice_crystal.png")
 const TEX_ROCKS := [
 	preload("res://art/decor/small_rock.png"),
 	preload("res://art/decor/rock_cluster_small.png"),
 	preload("res://art/decor/rock_cluster_large.png"),
 ]
-const TEX_CHOKE_ROCK := preload("res://art/decor/rock_cluster_small.png")
 const TEX_CRATER_SMALL := preload("res://art/craters/crater_single.png")
-const TEX_CRATER_MEDIUM := preload("res://art/craters/crater_2x2.png")
-const TEX_CRATER_BIG := preload("res://art/craters/crater_3x3.png")
 const TEX_CLIFF_LEFT := preload("res://art/cliffs/cliff_left.png")
 const TEX_CLIFF_RIGHT := preload("res://art/cliffs/cliff_right.png")
 const TEX_FOOTPRINTS := preload("res://art/overlays/footprints.png")
-## PLACEHOLDER art. Swap these files (or these paths) when the real rocket art exists.
+## PLACEHOLDER art. Swap these files (or these paths) when the real art exists.
 const TEX_BROKEN_ROCKET := preload("res://art/placeholders/broken_rocket_placeholder.png")
 const TEX_ROCKET_DEBRIS := preload("res://art/placeholders/rocket_debris_placeholder.png")
+const TEX_CAVE_MOUTH := preload("res://art/placeholders/cave_entrance_placeholder.png")
+const TEX_BUILD_PAD := preload("res://art/placeholders/build_pad_placeholder.png")
 
 const RESOURCE_NODE_SCRIPT := preload("res://scripts/resource_node.gd")
 const CRATER_SCRIPT := preload("res://scripts/crater_hazard.gd")
+const BUILD_PAD_SCRIPT := preload("res://scripts/build_pad.gd")
+const CAVE_ENTRANCE_SCRIPT := preload("res://scripts/cave_entrance.gd")
 
 const DECOR_SCALE := Vector2(0.25, 0.25)    # rock art is drawn ~4x larger than tiles
 const NODE_SCALE := Vector2(2.0, 2.0)       # metal / ice deposits (16 px art)
 const ROCKET_SCALE := Vector2(1.5, 1.5)
+const PILLAR_SIZE := 2                       # rock pillars that fill big gaps are 2x2 tiles
+const PILLAR_MIN_GAP := 6                    # a gap this wide (tiles) gets a pillar instead of a rock
 const DIRS: Array[Vector2i] = [Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT]
 
 @export var map_seed: int = 1337
 @export var camera_zoom: float = 2.0
 @export_tool_button("Generate Map", "TileMapLayer") var generate_button: Callable = generate
 
-## Numbers from the last generate(): path lengths and the oxygen cost of a trip.
+## Numbers from the last generate(): what was placed and whether the rules hold.
 var last_report: Dictionary = {}
 
 # Working data, only valid while generate() runs.
 var _walk := PackedByteArray()              # 1 = walkable tile
+var _used := PackedByteArray()              # 1 = wall or a tile with something on it
+var _keep := {}                             # tile -> true: must stay free of rocks and craters
 var _dist := PackedInt32Array()             # walking distance from the spawn, in tiles
-var _centres := {}                          # cell -> its point (tile)
-var _branch := {}                           # cell -> which of the 3 main branches
-var _degree := {}                           # cell -> number of corridors
-var _edges: Array[Dictionary] = []          # {a, b, line, shortcut}
-var _trail := {}                            # tile -> true, the sand path down each corridor
-var _chambers := {}                         # cell -> Rect2i
+var _trail := {}                            # tile -> true, the sand trails
+var _fillers: Array[Dictionary] = []        # what fills the gaps: {type, tile}
+var _pillars := 0                           # rock pillars added to fill big gaps
 
 
 func _ready() -> void:
@@ -129,7 +160,23 @@ func _ready() -> void:
 		return
 	if (get_node("Ground") as TileMapLayer).get_used_cells().is_empty():
 		generate()
+	_place_arrival()
 	_setup_camera()
+	get_viewport().size_changed.connect(_setup_camera)
+
+
+## Coming back out of a cave: the player stands in front of that cave's entrance.
+func _place_arrival() -> void:
+	var state := get_node_or_null("/root/GameState")
+	var player := get_node_or_null("Entities/Player") as Node2D
+	if state == null or player == null:
+		return
+	var how: String = state.arrival
+	if not how.begins_with("entrance:"):
+		return
+	var entrance := get_node_or_null("CaveEntrances/Entrance_%s" % how.trim_prefix("entrance:"))
+	if entrance != null:
+		player.global_position = entrance.exit_position()
 
 
 func generate() -> void:
@@ -138,253 +185,157 @@ func generate() -> void:
 	var nodes := get_node("Entities/Nodes")
 	var decor := get_node("Entities/Decor")
 	var ground_decor := get_node("GroundDecor")
-	var cliffs := _get_or_make_cliffs(walls)
-	for container in [nodes, decor, ground_decor, cliffs]:
+	var pads := _get_or_make("BuildPads", ground_decor)
+	var cliffs := _get_or_make("Cliffs", walls)
+	var entrances := _get_or_make("CaveEntrances", cliffs)
+	for container in [nodes, decor, ground_decor, pads, cliffs, entrances]:
 		_clear_children(container)
 
 	var rng := RandomNumberGenerator.new()
+	rng.seed = map_seed
 	var noise := FastNoiseLite.new()
 	noise.seed = map_seed
 	noise.frequency = 0.08
 
-	# 1. Layout: which tiles can be walked on.
-	# 2. Rewards: only in far dead-end chambers, checked by real walking distance.
-	# A layout without enough far dead ends is thrown away and built again. The
-	# retries are numbered, so one seed still always gives the same map.
-	var rewards: Array[Dictionary] = []
-	for attempt in LAYOUT_ATTEMPTS:
-		rng.seed = map_seed if attempt == 0 else hash([map_seed, attempt])
-		_build_maze(rng)
-		_carve_everything()
-		_dist = _flood_from(SPAWN_TILE)
-		var last_try := attempt == LAYOUT_ATTEMPTS - 1
-		rewards = _choose_reward_chambers(last_try)
-		if not rewards.is_empty():
-			break
-	_ensure_reachable(rewards)
+	# 1. Layout: which tiles can be walked on, and which are already taken.
+	_build_layout(noise)
+	# 2. No dead space: fill every empty patch that is too big.
+	_fill_gaps(rng)
+	_dist = _flood_from(SPAWN_TILE)
 
-	# 3. Paint and fill.
-	_paint_ground(ground, noise, rng, rewards)
+	# 3. Paint and place.
+	_paint_ground(ground, noise, rng)
 	_paint_walls(walls)
 	_place_cliffs(cliffs)
 	_build_base(ground_decor)
-	_place_rewards(nodes, decor, rewards, rng)
-	_place_hazards(ground_decor, decor, rewards, rng)
+	_place_build_pads(pads)
+	_place_entrances(entrances)
+	_place_starter_nodes(nodes, decor)
+	_place_fillers(ground_decor, decor, rng)
 
-	_make_report(rewards)
+	_make_report()
 
 
 # ---------------------------------------------------------------------------
 # 1. Layout
 # ---------------------------------------------------------------------------
 
-## Grows the maze over the coarse grid. Fills _centres, _branch, _degree, _edges.
-func _build_maze(rng: RandomNumberGenerator) -> void:
-	_centres.clear()
-	_branch.clear()
-	_degree.clear()
-	_edges.clear()
+func build_pad_tiles() -> Array[Vector2i]:
+	return BUILD_PAD_TILES.slice(0, mini(Config.BUILD_PAD_COUNT, BUILD_PAD_TILES.size()))
 
-	for cx in GRID_SIZE.x:
-		for cy in GRID_SIZE.y:
-			var cell := Vector2i(cx, cy)
-			if CLEARING_CELLS.has_point(cell):
-				continue
-			var jitter := Vector2i(rng.randi_range(-CELL_JITTER, CELL_JITTER), rng.randi_range(-CELL_JITTER, CELL_JITTER))
-			var centre := GRID_ORIGIN + cell * CELL_SIZE + Vector2i(CELL_SIZE, CELL_SIZE) / 2 + jitter
-			# Keep a whole chamber inside the map, also for cells at the edge.
-			var before := CHAMBER_SIZE / 2 + 1
-			var after := CHAMBER_SIZE - CHAMBER_SIZE / 2
-			_centres[cell] = centre.clamp(Vector2i(before, before), MAP_SIZE - Vector2i(after + 1, after + 1))
-			_degree[cell] = 0
-	_centres[HUB_CELL] = HUB_TILE
 
-	# The hub starts one branch towards each free neighbour (2-3 branches).
-	var in_maze := {HUB_CELL: true}
-	var active: Array = []                   # one list of growable cells per branch
-	var sizes: Array[int] = []
+func metal_tiles() -> Array[Vector2i]:
+	return METAL_SPOTS.slice(0, mini(Config.SURFACE_METAL_NODES, METAL_SPOTS.size()))
+
+
+func ice_tiles() -> Array[Vector2i]:
+	return ICE_SPOTS.slice(0, mini(Config.SURFACE_ICE_NODES, ICE_SPOTS.size()))
+
+
+## Fills _walk, _trail, _keep and _used.
+func _build_layout(noise: FastNoiseLite) -> void:
+	_walk.resize(MAP_SIZE.x * MAP_SIZE.y)
+	_walk.fill(0)
+	_used.resize(MAP_SIZE.x * MAP_SIZE.y)
+	_used.fill(0)
+	_keep.clear()
+	_trail.clear()
+	_fillers.clear()
+	_pillars = 0
+
+	# Open floor, minus the solid rock masses.
+	for x in range(FLOOR.position.x, FLOOR.end.x):
+		for y in range(FLOOR.position.y, FLOOR.end.y):
+			_walk[_index(Vector2i(x, y))] = 1
+	for block in ROCK_BLOCKS:
+		for x in range(block.position.x, block.end.x):
+			for y in range(block.position.y, block.end.y):
+				_walk[_index(Vector2i(x, y))] = 0
+
+	# Trails.
+	for corners: Array in TRAILS:
+		for i in corners.size() - 1:
+			var p: Vector2i = corners[i]
+			var to: Vector2i = corners[i + 1]
+			_trail[p] = true
+			while p != to:
+				p += Vector2i(signi(to.x - p.x), signi(to.y - p.y))
+				_trail[p] = true
+
+	# Everything that has a fixed place. These tiles are "taken", and they and
+	# the tiles around them stay free of rocks, pillars and craters.
+	var fixed: Array[Vector2i] = []
+	fixed.append_array(_trail.keys())
+	fixed.append_array(_rect_tiles(HAB_PLAZA))
+	fixed.append_array(_rect_tiles(PAD_PLAZA))
+	for pad in build_pad_tiles():
+		fixed.append_array(_rect_tiles(Rect2i(pad, Vector2i(PAD_SIZE, PAD_SIZE))))
+	fixed.append_array(_rect_tiles(Rect2i(ROCKET_TILE.x - 2, ROCKET_TILE.y - 2, 5, 3)))
+	for e in ENTRANCES:
+		fixed.append(e.tile)
+	fixed.append_array(metal_tiles())
+	fixed.append_array(ice_tiles())
+	fixed.append_array(ICE_CRYSTAL_TILES)
+	fixed.append_array(FOOTPRINT_TILES)
+	fixed.append(SPAWN_TILE)
+	for t in fixed:
+		_used[_index(t)] = 1
+		for dx in range(-1, 2):
+			for dy in range(-1, 2):
+				_keep[t + Vector2i(dx, dy)] = true
+
+	# A rough rock border: the wall bulges inward here and there, never over
+	# anything that has a fixed place. Depth 0 first, so a bulge is always attached.
+	var bumps := FastNoiseLite.new()
+	bumps.seed = noise.seed + 1
+	bumps.frequency = 0.21
+	for depth in BORDER_ROUGHNESS:
+		for x in range(FLOOR.position.x, FLOOR.end.x):
+			for y in range(FLOOR.position.y, FLOOR.end.y):
+				var t := Vector2i(x, y)
+				if _border_depth(t) != depth or _keep.has(t) or not _is_walk(t):
+					continue
+				if depth > 0 and not _touches_wall(t):
+					continue
+				if bumps.get_noise_2d(x, y) > 0.05 + depth * 0.2:
+					_walk[_index(t)] = 0
+
+	for x in MAP_SIZE.x:
+		for y in MAP_SIZE.y:
+			if _walk[_index(Vector2i(x, y))] == 0:
+				_used[_index(Vector2i(x, y))] = 1
+
+
+## How many tiles a floor tile is away from the edge of FLOOR (0 = on the edge).
+func _border_depth(t: Vector2i) -> int:
+	return mini(mini(t.x - FLOOR.position.x, FLOOR.end.x - 1 - t.x), mini(t.y - FLOOR.position.y, FLOOR.end.y - 1 - t.y))
+
+
+func _touches_wall(t: Vector2i) -> bool:
 	for d in DIRS:
-		var n := HUB_CELL + d
-		if _centres.has(n):
-			_link(HUB_CELL, n, false)
-			in_maze[n] = true
-			_branch[n] = active.size()
-			active.append([n])
-			sizes.append(1)
-
-	# Always grow the smallest branch, so the three branches end up similar in size.
-	while true:
-		var b := -1
-		for i in active.size():
-			if not active[i].is_empty() and (b == -1 or sizes[i] < sizes[b]):
-				b = i
-		if b == -1:
-			break
-		var list: Array = active[b]
-		var idx := list.size() - 1
-		if rng.randf() < BRANCH_RANDOMNESS:
-			idx = rng.randi_range(0, list.size() - 1)
-		var cell: Vector2i = list[idx]
-		var options: Array[Vector2i] = []
-		for d in DIRS:
-			var n := cell + d
-			if _centres.has(n) and not in_maze.has(n):
-				options.append(n)
-		if options.is_empty():
-			list.remove_at(idx)
-			continue
-		var next := options[rng.randi_range(0, options.size() - 1)]
-		_link(cell, next, false)
-		in_maze[next] = true
-		_branch[next] = b
-		list.append(next)
-		sizes[b] += 1
-
-	_add_loops(rng)
-
-
-## Extra links between corridors that are far apart by path: these are the shortcuts.
-func _add_loops(rng: RandomNumberGenerator) -> void:
-	var candidates: Array = []               # [score, a, b]
-	for a: Vector2i in _centres:
-		for d: Vector2i in [Vector2i.RIGHT, Vector2i.DOWN]:
-			var b := a + d
-			if not _centres.has(b) or _linked(a, b):
-				continue
-			# Dead ends stay dead ends, and the hub keeps exactly its branches.
-			if _degree[a] < 2 or _degree[b] < 2 or a == HUB_CELL or b == HUB_CELL:
-				continue
-			var steps := _maze_steps(a, b)
-			if steps >= 5:
-				candidates.append([steps * 1000 + rng.randi_range(0, 999), a, b])
-	candidates.sort_custom(func(x, y): return x[0] > y[0])
-	var used := {}
-	var added := 0
-	for c in candidates:
-		if added >= LOOP_COUNT:
-			break
-		if used.has(c[1]) or used.has(c[2]):
-			continue
-		_link(c[1], c[2], true)
-		used[c[1]] = true
-		used[c[2]] = true
-		added += 1
-
-
-func _link(a: Vector2i, b: Vector2i, shortcut: bool) -> void:
-	_edges.append({"a": a, "b": b, "line": [], "shortcut": shortcut})
-	_degree[a] += 1
-	_degree[b] += 1
-
-
-func _linked(a: Vector2i, b: Vector2i) -> bool:
-	for e in _edges:
-		if (e.a == a and e.b == b) or (e.a == b and e.b == a):
+		if not _is_walk(t + d):
 			return true
 	return false
 
 
-## Number of corridors you walk from cell a to cell b.
-func _maze_steps(a: Vector2i, b: Vector2i) -> int:
-	var steps := {a: 0}
-	var queue: Array[Vector2i] = [a]
-	var head := 0
-	while head < queue.size():
-		var cur := queue[head]
-		head += 1
-		if cur == b:
-			return steps[cur]
-		for e in _edges:
-			var other: Variant = null
-			if e.a == cur:
-				other = e.b
-			elif e.b == cur:
-				other = e.a
-			if other != null and not steps.has(other):
-				steps[other] = steps[cur] + 1
-				queue.append(other)
-	return 0
-
-
-## Turns the maze into walkable tiles: clearing, corridors, chambers.
-func _carve_everything() -> void:
-	_walk.resize(MAP_SIZE.x * MAP_SIZE.y)
-	_walk.fill(0)
-	_trail.clear()
-	_chambers.clear()
-
-	_carve_rect(CLEARING)
-	# Exit of the clearing: one corridor east to the hub.
-	var exit_line: Array[Vector2i] = []
-	for x in range(PAD_PLAZA.end.x, HUB_TILE.x + 1):
-		exit_line.append(Vector2i(x, HUB_TILE.y))
-	_carve_line(exit_line)
-
-	for e in _edges:
-		var a: Vector2i = _centres[e.a]
-		var b: Vector2i = _centres[e.b]
-		# Side-by-side cells: walk across first, then up/down. Stacked cells: the other way.
-		var line := _corner_line(a, b, e.a.y == e.b.y)
-		e.line = line
-		_carve_line(line)
-
-	# Dead ends become chambers.
-	for cell: Vector2i in _centres:
-		if cell != HUB_CELL and _degree[cell] == 1:
-			var half := CHAMBER_SIZE / 2
-			var rect := Rect2i(_centres[cell] - Vector2i(half, half), Vector2i(CHAMBER_SIZE, CHAMBER_SIZE))
-			_chambers[cell] = rect
-			_carve_rect(rect)
-	# The sand path stops at the chamber door.
-	for rect: Rect2i in _chambers.values():
-		for x in range(rect.position.x, rect.end.x):
-			for y in range(rect.position.y, rect.end.y):
-				_trail.erase(Vector2i(x, y))
-
-
-## Tiles from a to b with one 90-degree corner.
-func _corner_line(a: Vector2i, b: Vector2i, horizontal_first: bool) -> Array[Vector2i]:
-	var line: Array[Vector2i] = [a]
-	var p := a
-	for step in 2:
-		var along_x := (step == 0) == horizontal_first
-		if along_x:
-			while p.x != b.x:
-				p.x += signi(b.x - p.x)
-				line.append(p)
-		else:
-			while p.y != b.y:
-				p.y += signi(b.y - p.y)
-				line.append(p)
-	return line
-
-
-func _carve_line(line: Array[Vector2i]) -> void:
-	var lo := -(CORRIDOR_WIDTH - 1) / 2
-	var hi := CORRIDOR_WIDTH / 2
-	for t in line:
-		_trail[t] = true
-		for dx in range(lo, hi + 1):
-			for dy in range(lo, hi + 1):
-				_carve(t + Vector2i(dx, dy))
-
-
-func _carve_rect(rect: Rect2i) -> void:
+func _rect_tiles(rect: Rect2i) -> Array[Vector2i]:
+	var tiles: Array[Vector2i] = []
 	for x in range(rect.position.x, rect.end.x):
 		for y in range(rect.position.y, rect.end.y):
-			_carve(Vector2i(x, y))
+			tiles.append(Vector2i(x, y))
+	return tiles
 
 
-## Marks a tile walkable. The outer ring of the map always stays wall.
-func _carve(t: Vector2i) -> void:
-	if t.x >= 1 and t.y >= 1 and t.x <= MAP_SIZE.x - 2 and t.y <= MAP_SIZE.y - 2:
-		_walk[t.y * MAP_SIZE.x + t.x] = 1
+func _index(t: Vector2i) -> int:
+	return t.y * MAP_SIZE.x + t.x
+
+
+func _in_map(t: Vector2i) -> bool:
+	return t.x >= 0 and t.y >= 0 and t.x < MAP_SIZE.x and t.y < MAP_SIZE.y
 
 
 func _is_walk(t: Vector2i) -> bool:
-	if t.x < 0 or t.y < 0 or t.x >= MAP_SIZE.x or t.y >= MAP_SIZE.y:
-		return false
-	return _walk[t.y * MAP_SIZE.x + t.x] == 1
+	return _in_map(t) and _walk[_index(t)] == 1
 
 
 ## Walking distance (in tiles) from `start` to every tile. -1 = cannot be reached.
@@ -392,151 +343,103 @@ func _flood_from(start: Vector2i) -> PackedInt32Array:
 	var dist := PackedInt32Array()
 	dist.resize(MAP_SIZE.x * MAP_SIZE.y)
 	dist.fill(-1)
-	dist[start.y * MAP_SIZE.x + start.x] = 0
+	dist[_index(start)] = 0
 	var queue: Array[Vector2i] = [start]
 	var head := 0
 	while head < queue.size():
 		var cur := queue[head]
 		head += 1
-		var d := dist[cur.y * MAP_SIZE.x + cur.x]
+		var d := dist[_index(cur)]
 		for dir in DIRS:
 			var n := cur + dir
-			if _is_walk(n) and dist[n.y * MAP_SIZE.x + n.x] == -1:
-				dist[n.y * MAP_SIZE.x + n.x] = d + 1
+			if _is_walk(n) and dist[_index(n)] == -1:
+				dist[_index(n)] = d + 1
 				queue.append(n)
 	return dist
 
 
 func _distance_to(t: Vector2i) -> int:
-	return _dist[t.y * MAP_SIZE.x + t.x]
+	return _dist[_index(t)] if _in_map(t) else -1
 
 
 # ---------------------------------------------------------------------------
-# 2. Rewards
+# 2. No dead space
 # ---------------------------------------------------------------------------
 
-## Picks the far dead-end chambers and decides how many metal / ice nodes each gets.
-## Returns a list of {cell, kind, count, guarded}, farthest first.
-## Returns nothing if there are too few far dead ends, unless `allow_near` is set.
-func _choose_reward_chambers(allow_near: bool) -> Array[Dictionary]:
-	var leaves: Array = _chambers.keys()
-	leaves.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
-		var da := _distance_to(_centres[a])
-		var db := _distance_to(_centres[b])
-		if da != db:
-			return da > db
-		return a.x * 100 + a.y < b.x * 100 + b.y)
-
-	var metal_min := ceili(float(Config.METAL_NODE_COUNT) / Config.MAX_NODES_PER_CHAMBER)
-	var ice_min := ceili(float(Config.ICE_NODE_COUNT) / Config.MAX_NODES_PER_CHAMBER)
-	if leaves.is_empty():
-		if allow_near:
-			push_warning("world_gen: the maze has no dead ends, so no rewards were placed")
-		return []
-
-	# Far enough = at least MIN_REWARD_DISTANCE of the longest walk on the map.
-	var farthest := _distance_to(_centres[leaves[0]])
-	var chosen: Array = []
-	var safe_zone := CLEARING.grow(BASE_SAFE_RADIUS)
-	for cell: Vector2i in leaves:
-		if safe_zone.has_point(_centres[cell]):
-			continue                              # far to walk, but right behind the base wall
-		if _distance_to(_centres[cell]) >= farthest * Config.MIN_REWARD_DISTANCE and chosen.size() < MAX_REWARD_CHAMBERS:
-			chosen.append(cell)
-	if chosen.size() < metal_min + ice_min:
-		if not allow_near:
-			return []
-		push_warning("world_gen: only %d far dead ends, using nearer ones as well" % chosen.size())
-		chosen = leaves.slice(0, mini(leaves.size(), metal_min + ice_min))
-
-	# Ice goes to one branch (region) of the map, metal to the others.
-	var ice_chambers := clampi(roundi(chosen.size() * float(Config.ICE_NODE_COUNT) / (Config.ICE_NODE_COUNT + Config.METAL_NODE_COUNT)),
-		ice_min, maxi(ice_min, chosen.size() - metal_min))
-	ice_chambers = mini(ice_chambers, chosen.size() - 1)
-	var per_branch := {}
-	for cell: Vector2i in chosen:
-		if not per_branch.has(_branch[cell]):
-			per_branch[_branch[cell]] = []
-		per_branch[_branch[cell]].append(cell)
-	var ice_cells: Array = []
-	var best_branch := -1
-	for b: int in per_branch:
-		var n: int = per_branch[b].size()
-		if n >= ice_chambers and n < chosen.size() and (best_branch == -1 or n < per_branch[best_branch].size()):
-			best_branch = b
-	if best_branch != -1:
-		ice_cells = per_branch[best_branch].slice(0, ice_chambers)
-	else:
-		# No single branch has enough: use the northern chambers as the ice region.
-		var by_north := chosen.duplicate()
-		by_north.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return _centres[a].y * 1000 + _centres[a].x < _centres[b].y * 1000 + _centres[b].x)
-		ice_cells = by_north.slice(0, ice_chambers)
-
-	var metal_cells: Array = chosen.filter(func(c: Vector2i) -> bool: return not ice_cells.has(c))
-	var ice_counts := _spread(Config.ICE_NODE_COUNT, ice_cells.size())
-	var metal_counts := _spread(Config.METAL_NODE_COUNT, metal_cells.size())
-
-	var rewards: Array[Dictionary] = []
-	for cell: Vector2i in chosen:              # still farthest first
-		var is_ice := ice_cells.has(cell)
-		var count: int = ice_counts[ice_cells.find(cell)] if is_ice else metal_counts[metal_cells.find(cell)]
-		if count > 0:
-			rewards.append({"cell": cell, "kind": "ice" if is_ice else "metal", "count": count, "guarded": false})
-
-	# The richest (then farthest) chambers are the guarded ones.
-	var by_value := rewards.duplicate()
-	by_value.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		if a.count != b.count:
-			return a.count > b.count
-		return _distance_to(_centres[a.cell]) > _distance_to(_centres[b.cell]))
-	for i in mini(GUARDED_CHAMBERS, by_value.size()):
-		by_value[i].guarded = true
-	return rewards
+## The biggest square of plain, empty floor (walkable, nothing on it).
+func largest_empty_square() -> Rect2i:
+	var w := MAP_SIZE.x
+	var sizes := PackedInt32Array()
+	sizes.resize(w * MAP_SIZE.y)
+	var best := 0
+	var best_pos := Vector2i.ZERO
+	for y in MAP_SIZE.y:
+		for x in w:
+			var i := y * w + x
+			if _walk[i] == 0 or _used[i] == 1:
+				sizes[i] = 0
+				continue
+			var v := 1
+			if x > 0 and y > 0:
+				v = 1 + mini(mini(sizes[i - 1], sizes[i - w]), sizes[i - w - 1])
+			sizes[i] = v
+			if v > best:
+				best = v
+				best_pos = Vector2i(x - v + 1, y - v + 1)
+	return Rect2i(best_pos, Vector2i(best, best))
 
 
-## Shares `total` nodes over `chambers` chambers. The first (farthest) get the most.
-func _spread(total: int, chambers: int) -> Array[int]:
-	var counts: Array[int] = []
-	if chambers <= 0:
-		return counts
-	counts.resize(chambers)
-	counts.fill(0)
-	var cap := maxi(Config.MAX_NODES_PER_CHAMBER, ceili(float(total) / chambers))
-	var left := total
-	while left > 0:
-		var gave := false
-		for i in chambers:
-			if left > 0 and counts[i] < cap:
-				counts[i] += 1
-				left -= 1
-				gave = true
-		if not gave:
-			break
-	return counts
+## Puts something into every empty patch bigger than Config.SURFACE_MAX_EMPTY_SQUARE:
+## a rock pillar in the big ones, otherwise a rock, a crater or rocket debris.
+func _fill_gaps(rng: RandomNumberGenerator) -> void:
+	for guard in 500:
+		var gap := largest_empty_square()
+		var size := gap.size.x
+		if size <= Config.SURFACE_MAX_EMPTY_SQUARE:
+			return
+		var centre := gap.position + Vector2i(size, size) / 2
+
+		# A big gap gets a pillar: 2x2 solid rock with floor all around it.
+		if size >= PILLAR_MIN_GAP:
+			var corner := gap.position + Vector2i(size - PILLAR_SIZE, size - PILLAR_SIZE) / 2
+			var pillar := _rect_tiles(Rect2i(corner, Vector2i(PILLAR_SIZE, PILLAR_SIZE)))
+			if pillar.all(func(t: Vector2i) -> bool: return not _keep.has(t)):
+				for t in pillar:
+					_walk[_index(t)] = 0
+					_used[_index(t)] = 1
+				_pillars += 1
+				continue
+
+		# Otherwise one object, near the middle, on a tile that may be blocked.
+		var options: Array = []                  # [score, tile]
+		for t in _rect_tiles(gap):
+			if not _keep.has(t):
+				options.append([Vector2(t - centre).length() + rng.randf() * 1.5, t])
+		if options.is_empty():
+			_used[_index(centre)] = 1            # nothing may stand here: leave it open
+			continue
+		options.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+		var tile: Vector2i = options[0][1]
+		var type := "rock"
+		var roll := rng.randf()
+		if _chebyshev(tile, ROCKET_TILE) <= 6 and roll < 0.5:
+			type = "debris"
+		elif _chebyshev(tile, HAB_TILE) >= Config.BASE_SAFE_RADIUS and roll < 0.3:
+			type = "crater"
+		_fillers.append({"type": type, "tile": tile})
+		_used[_index(tile)] = 1
+	push_warning("world_gen: could not fill all the empty space")
 
 
-## Every reward chamber must be reachable on foot from the spawn. The maze makes
-## that true by design; this is the safety net (it digs a corridor to the hub).
-func _ensure_reachable(rewards: Array[Dictionary]) -> void:
-	var fixed := false
-	for r in rewards:
-		var c: Vector2i = _centres[r.cell]
-		if _distance_to(c) < 0:
-			push_warning("world_gen: chamber %s was cut off, digging a corridor to the hub" % str(r.cell))
-			_carve_line(_corner_line(c, HUB_TILE, true))
-			fixed = true
-	if fixed:
-		_dist = _flood_from(SPAWN_TILE)
-		for r in rewards:
-			if _distance_to(_centres[r.cell]) < 0:
-				push_warning("world_gen: chamber %s is still unreachable" % str(r.cell))
+func _chebyshev(a: Vector2i, b: Vector2i) -> int:
+	return maxi(absi(a.x - b.x), absi(a.y - b.y))
 
 
 # ---------------------------------------------------------------------------
 # 3. Painting
 # ---------------------------------------------------------------------------
 
-func _paint_ground(ground: TileMapLayer, noise: FastNoiseLite, rng: RandomNumberGenerator, rewards: Array[Dictionary]) -> void:
+func _paint_ground(ground: TileMapLayer, noise: FastNoiseLite, rng: RandomNumberGenerator) -> void:
 	ground.clear()
 	for x in MAP_SIZE.x:
 		for y in MAP_SIZE.y:
@@ -544,9 +447,7 @@ func _paint_ground(ground: TileMapLayer, noise: FastNoiseLite, rng: RandomNumber
 			var tile := T_REGOLITH
 			var n := noise.get_noise_2d(x, y)
 			var r := rng.randf()                 # always drawn, so the map stays the same per seed
-			if CLEARING.has_point(t):
-				tile = T_REGOLITH                # the base is flat, clean ground
-			elif n > 0.38:
+			if n > 0.38:
 				tile = T_ORANGE_SAND
 			elif n > 0.24:
 				tile = T_RIPPLES
@@ -562,28 +463,34 @@ func _paint_ground(ground: TileMapLayer, noise: FastNoiseLite, rng: RandomNumber
 				tile = T_CRATERS
 			ground.set_cell(t, SOURCE_ID, tile)
 
-	# Chamber floors hint at what is inside: icy ground or rocky ground.
-	for reward in rewards:
-		var rect: Rect2i = _chambers[reward.cell]
-		for x in range(rect.position.x, rect.end.x):
-			for y in range(rect.position.y, rect.end.y):
-				var roll := rng.randf()
-				if reward.kind == "ice" and roll < 0.4:
-					ground.set_cell(Vector2i(x, y), SOURCE_ID, T_ICE)
-				elif reward.kind == "metal" and roll < 0.3:
-					ground.set_cell(Vector2i(x, y), SOURCE_ID, T_ROCKY if roll < 0.15 else T_ROCKS)
+	# The ground hints at what is near: icy around the ice, rocky around the metal.
+	for spot in ice_tiles():
+		_paint_patch(ground, spot, T_ICE, T_ICE, rng)
+	for spot in metal_tiles():
+		_paint_patch(ground, spot, T_ROCKY, T_ROCKS, rng)
 
-	# The sand trail down the middle of every corridor.
+	# Scorched ground under the wreck.
+	for t in _rect_tiles(Rect2i(ROCKET_TILE.x - 2, ROCKET_TILE.y - 2, 5, 3)):
+		ground.set_cell(t, SOURCE_ID, T_CRACKED)
+
+	# Sand trails.
 	for t: Vector2i in _trail:
 		var pick := _trail_tile(t)
 		ground.set_cell(t, SOURCE_ID, pick[0], pick[1])
 
-	# Base: a sand plaza under the launch pad, and scorched ground under the wreck.
+	# Sand plazas under the hab and the launch pad, and a sand square for every build pad.
+	_paint_sand_rect(ground, HAB_PLAZA)
 	_paint_sand_rect(ground, PAD_PLAZA)
-	for x in range(ROCKET_TILE.x - 2, ROCKET_TILE.x + 3):
-		for y in range(ROCKET_TILE.y - 2, ROCKET_TILE.y + 1):
-			if CLEARING.has_point(Vector2i(x, y)):
-				ground.set_cell(Vector2i(x, y), SOURCE_ID, T_CRACKED)
+	for pad in build_pad_tiles():
+		_paint_sand_rect(ground, Rect2i(pad, Vector2i(PAD_SIZE, PAD_SIZE)))
+
+
+## A loose 5x5 patch of two ground tiles around `centre`.
+func _paint_patch(ground: TileMapLayer, centre: Vector2i, tile_a: Vector2i, tile_b: Vector2i, rng: RandomNumberGenerator) -> void:
+	for t in _rect_tiles(Rect2i(centre - Vector2i(2, 2), Vector2i(5, 5))):
+		var roll := rng.randf()
+		if _is_walk(t) and roll < 0.45:
+			ground.set_cell(t, SOURCE_ID, tile_a if roll < 0.25 else tile_b)
 
 
 ## Which path tile fits here, from the trail tiles next to it: [atlas coords, transform].
@@ -638,7 +545,7 @@ func _paint_walls(walls: TileMapLayer) -> void:
 				walls.set_cell(Vector2i(x, y), SOURCE_ID, T_WALL_ROCK)
 
 
-## Cliff faces on every rock edge that looks down onto a path (the art shows a
+## Cliff faces on every rock edge that looks down onto floor (the art shows a
 ## cliff seen from the front, with a left and a right end piece).
 func _place_cliffs(cliffs: Node) -> void:
 	var count := 0
@@ -656,7 +563,7 @@ func _place_cliffs(cliffs: Node) -> void:
 			s.name = "Cliff%03d" % count
 			s.texture = tex
 			s.scale = Vector2(TILE, TILE) / tex.get_size()
-			s.position = Vector2(Vector2i(x, y) * TILE) + Vector2(TILE, TILE) * 0.5
+			s.position = _tile_centre(Vector2i(x, y))
 			cliffs.add_child(s)
 			s.owner = _scene_owner()
 
@@ -666,7 +573,7 @@ func _faces_south(t: Vector2i) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# 4. The base clearing
+# 4. The base: hab, launch pad, wreck, build pads, cave entrances
 # ---------------------------------------------------------------------------
 
 func _build_base(ground_decor: Node) -> void:
@@ -674,6 +581,10 @@ func _build_base(ground_decor: Node) -> void:
 	var pad := get_node_or_null("LaunchPad") as Node2D
 	if pad != null:
 		pad.position = _tile_centre(LAUNCH_PAD_TILE)
+		# The launch pad is a build pad too: the only one that takes the Ascent vehicle.
+		pad.set_script(BUILD_PAD_SCRIPT)
+		pad.set("pad_id", "launch")
+		pad.set("pad_type", "launch")
 	var hab := get_node_or_null("Entities/Hab") as Node2D
 	if hab != null:
 		hab.position = _tile_centre(HAB_TILE)
@@ -681,7 +592,7 @@ func _build_base(ground_decor: Node) -> void:
 	if player != null:
 		player.position = _tile_centre(SPAWN_TILE)
 
-	# Footprints between the hab, the pad and the wreck.
+	# Footprints between the hab, the pads and the wreck.
 	var i := 0
 	for t: Vector2i in FOOTPRINT_TILES:
 		i += 1
@@ -697,6 +608,52 @@ func _build_base(ground_decor: Node) -> void:
 		debris.rotation = (i % 4) * PI / 2
 
 	_build_broken_rocket()
+
+
+func _place_build_pads(pads: Node) -> void:
+	var i := 0
+	for tile in build_pad_tiles():
+		i += 1
+		var size := Vector2(PAD_SIZE, PAD_SIZE) * TILE
+		_place_sprite(pads, "Pad%02d" % i, TEX_BUILD_PAD, size / TEX_BUILD_PAD.get_size(),
+			Vector2(tile * TILE) + size * 0.5, BUILD_PAD_SCRIPT, {"pad_id": "pad_%02d" % i, "pad_type": "machine"})
+
+
+## One Area2D per cave: the dark mouth in the cliff, a trigger strip at its foot
+## and the marker where the player comes back out.
+func _place_entrances(entrances: Node) -> void:
+	for e in ENTRANCES:
+		var tile: Vector2i = e.tile
+		var area := Area2D.new()
+		area.set_script(CAVE_ENTRANCE_SCRIPT)
+		area.name = "Entrance_%s" % e.cave
+		area.set("cave_id", e.cave)
+		# Origin: the foot of the cliff, in the middle of the trail.
+		area.position = Vector2(tile.x * TILE + TILE * 0.5, tile.y * TILE)
+		entrances.add_child(area)
+		area.owner = _scene_owner()
+
+		var mouth := Sprite2D.new()
+		mouth.name = "Mouth"
+		mouth.texture = TEX_CAVE_MOUTH
+		mouth.position = Vector2(0, -TEX_CAVE_MOUTH.get_size().y * 0.5)
+		area.add_child(mouth)
+		mouth.owner = _scene_owner()
+
+		var shape := RectangleShape2D.new()
+		shape.size = Vector2(TILE * 1.25, TILE * 0.5)
+		var collision := CollisionShape2D.new()
+		collision.name = "CollisionShape2D"
+		collision.shape = shape
+		collision.position = Vector2(0, TILE * 0.25)      # the top half of the floor tile in front
+		area.add_child(collision)
+		collision.owner = _scene_owner()
+
+		var exit_marker := Marker2D.new()
+		exit_marker.name = "Exit"
+		exit_marker.position = Vector2(0, TILE * 1.5)     # one tile further out, clear of the trigger
+		area.add_child(exit_marker)
+		exit_marker.owner = _scene_owner()
 
 
 ## The crashed rocket: sprite, solid collider, smoke and sparks. Saved into the scene.
@@ -784,222 +741,129 @@ func _build_broken_rocket() -> void:
 
 
 # ---------------------------------------------------------------------------
-# 5. Rewards and hazards
+# 5. Starter deposits and the things that fill the gaps
 # ---------------------------------------------------------------------------
 
-func _place_rewards(nodes: Node, decor: Node, rewards: Array[Dictionary], rng: RandomNumberGenerator) -> void:
-	# Spots inside a chamber, away from the door lines: the corners first.
-	var lo := -(CHAMBER_SIZE / 2)
-	var hi := CHAMBER_SIZE - CHAMBER_SIZE / 2 - 1
-	var corner_spots: Array[Vector2i] = [Vector2i(lo, lo), Vector2i(hi, lo), Vector2i(lo, hi), Vector2i(hi, hi)]
-	var extra_spots: Array[Vector2i] = [Vector2i(lo + 1, lo), Vector2i(hi - 1, hi), Vector2i(lo, hi - 1), Vector2i(hi, lo + 1)]
-	var reward_by_cell := {}
-	for r in rewards:
-		reward_by_cell[r.cell] = r
+func _place_starter_nodes(nodes: Node, decor: Node) -> void:
+	var i := 0
+	for tile in metal_tiles():
+		i += 1
+		var s := _place_sprite(nodes, "Metal%02d" % i, TEX_METAL, NODE_SCALE, _tile_centre(tile),
+			RESOURCE_NODE_SCRIPT, {"kind": "metal", "charges_left": Config.NODE_CHARGES, "node_id": "surface/Metal%02d" % i})
+		s.set_meta("kind", "metal")
+	i = 0
+	for tile in ice_tiles():
+		i += 1
+		var s := _place_sprite(nodes, "Ice%02d" % i, TEX_ICE, NODE_SCALE, _tile_centre(tile),
+			RESOURCE_NODE_SCRIPT, {"kind": "ice", "charges_left": Config.NODE_CHARGES, "node_id": "surface/Ice%02d" % i})
+		s.set_meta("kind", "ice")
+	i = 0
+	for tile in ICE_CRYSTAL_TILES:
+		i += 1
+		_place_sprite(decor, "Crystal%02d" % i, TEX_ICE_CRYSTAL, DECOR_SCALE, _tile_centre(tile))
 
-	var metal_i := 0
-	var ice_i := 0
+
+func _place_fillers(ground_decor: Node, decor: Node, rng: RandomNumberGenerator) -> void:
 	var rock_i := 0
-	for cell: Vector2i in _chambers:
-		var spots := corner_spots.duplicate()
-		_shuffle(spots, rng)
-		spots.append_array(extra_spots)
-		var centre: Vector2i = _centres[cell]
-		var used := 0
-		if reward_by_cell.has(cell):
-			var r: Dictionary = reward_by_cell[cell]
-			for i in r.count:
-				# Only on floor the player can really reach.
-				while used < spots.size() and _distance_to(centre + spots[used]) < 0:
-					used += 1
-				if used >= spots.size():
-					push_warning("world_gen: chamber %s has no room for all its nodes" % str(cell))
-					break
-				var node_name := ""
-				if r.kind == "metal":
-					metal_i += 1
-					node_name = "Metal%02d" % metal_i
-				else:
-					ice_i += 1
-					node_name = "Ice%02d" % ice_i
-				var s := _place_sprite(nodes, node_name, TEX_METAL if r.kind == "metal" else TEX_ICE, NODE_SCALE,
-					_tile_centre(centre + spots[used]), RESOURCE_NODE_SCRIPT, {"kind": r.kind, "charges_left": Config.NODE_CHARGES})
-				s.set_meta("kind", r.kind)
-				used += 1
-		# Rocks fill some of the free spots. Empty dead ends get more of them.
-		var rocks := 1 if reward_by_cell.has(cell) else rng.randi_range(2, 3)
-		for i in rocks:
-			if used >= corner_spots.size():
-				break
-			rock_i += 1
-			var tex: Texture2D = TEX_ROCKS[rng.randi() % TEX_ROCKS.size()]
-			_place_sprite(decor, "Rock%02d" % rock_i, tex, DECOR_SCALE, _tile_centre(centre + spots[used]))
-			used += 1
-
-
-func _place_hazards(ground_decor: Node, decor: Node, rewards: Array[Dictionary], rng: RandomNumberGenerator) -> void:
-	var reward_by_cell := {}
-	for r in rewards:
-		reward_by_cell[r.cell] = r
 	var crater_i := 0
-	var choke_i := 0
-
-	for e in _edges:
-		if e.a == HUB_CELL or e.b == HUB_CELL:
-			continue                              # the first corridors out of the base are safe
-		var line: Array[Vector2i] = e.line
-		var slots := _obstacle_slots(line)
-		var used: Array[int] = []
-
-		var reward: Dictionary = reward_by_cell.get(e.b, reward_by_cell.get(e.a, {}))
-		var leads_to_chamber: bool = _chambers.has(e.a) or _chambers.has(e.b)
-		var plan: Array[String] = []              # what to put on this corridor
-		if e.shortcut:
-			plan = ["big", "big"]                 # shortcuts always cost oxygen
-		elif leads_to_chamber and not reward.is_empty() and reward.guarded:
-			plan = ["big", "choke"]
-		elif leads_to_chamber and not reward.is_empty():
-			plan = ["medium"]
-		elif rng.randf() < CRATER_DENSITY:
-			plan = ["small" if rng.randf() < 0.6 else "medium"]
-
-		for what in plan:
-			var i := _take_slot(slots, used, rng)
-			if i == -1:
-				break
-			var along := line[i + 1] - line[i]
-			var across := Vector2(-along.y, along.x)
-			var horizontal := along.x != 0
-			var pos := _tile_centre(line[i])
-			if what == "choke":
-				# Two rocks squeeze the corridor down to one tile.
-				for side: float in [-1.0, 1.0]:
-					choke_i += 1
-					_place_sprite(decor, "ChokeRock%02d" % choke_i, TEX_CHOKE_ROCK, DECOR_SCALE, pos + across * side * TILE)
-				continue
-			crater_i += 1
-			var crater_name := "Crater%02d" % crater_i
-			if what == "big":
-				# Fills the whole corridor: cannot be walked around.
-				_place_sprite(ground_decor, crater_name, TEX_CRATER_BIG,
-					Vector2.ONE * (CORRIDOR_WIDTH * TILE) / TEX_CRATER_BIG.get_size().x, pos, CRATER_SCRIPT,
-					{"hazard_fraction": Vector2(0.8, 1.15) if horizontal else Vector2(1.15, 0.8)})
-			elif what == "medium":
-				# Two tiles wide against one wall: one tile is left to squeeze past.
-				var side := -1.0 if rng.randf() < 0.5 else 1.0
-				_place_sprite(ground_decor, crater_name, TEX_CRATER_MEDIUM,
-					Vector2.ONE * (TILE * 1.9) / TEX_CRATER_MEDIUM.get_size().x, pos + across * side * TILE * 0.55, CRATER_SCRIPT,
-					{"hazard_fraction": Vector2(0.75, 0.75), "rotation": PI / 2 if horizontal else 0.0})
-			else:
-				# One tile: easy to step around if you watch where you walk.
-				var lane := float(rng.randi_range(-1, 1))
-				_place_sprite(ground_decor, crater_name, TEX_CRATER_SMALL,
-					Vector2.ONE * (TILE * 1.1) / TEX_CRATER_SMALL.get_size().x, pos + across * lane * TILE, CRATER_SCRIPT,
+	var debris_i := 100                          # after the fixed debris around the wreck
+	for f in _fillers:
+		var pos := _tile_centre(f.tile)
+		match f.type:
+			"rock":
+				rock_i += 1
+				var tex: Texture2D = TEX_ROCKS[rng.randi() % TEX_ROCKS.size()]
+				_place_sprite(decor, "Rock%02d" % rock_i, tex, DECOR_SCALE, pos)
+			"crater":
+				# One tile: costs oxygen if you walk into it, easy to step around.
+				crater_i += 1
+				_place_sprite(ground_decor, "Crater%02d" % crater_i, TEX_CRATER_SMALL,
+					Vector2.ONE * (TILE * 1.1) / TEX_CRATER_SMALL.get_size().x, pos, CRATER_SCRIPT,
 					{"hazard_fraction": Vector2(0.7, 0.7)})
-
-
-## Places on a corridor where an obstacle fits: straight, plain corridor, well
-## away from junctions, corners, chambers and the base.
-func _obstacle_slots(line: Array[Vector2i]) -> Array[int]:
-	var slots: Array[int] = []
-	var reach := CORRIDOR_WIDTH / 2 + 1          # first tile beyond the corridor wall
-	for i in range(2, line.size() - 2):
-		var along := line[i + 1] - line[i]
-		if line[i] - line[i - 1] != along or line[i + 2] - line[i + 1] != along:
-			continue                              # too close to the corner
-		var across := Vector2i(-along.y, along.x)
-		var plain := true
-		for j in [i - 1, i, i + 1]:
-			if _is_walk(line[j] + across * reach) or _is_walk(line[j] - across * reach):
-				plain = false                     # something opens up next to the corridor here
-				break
-		if plain:
-			slots.append(i)
-	return slots
-
-
-## Picks a free slot at least 3 tiles from the ones already used. -1 = none left.
-func _take_slot(slots: Array[int], used: Array[int], rng: RandomNumberGenerator) -> int:
-	var free: Array[int] = []
-	for s in slots:
-		var ok := true
-		for u in used:
-			if absi(s - u) < 3:
-				ok = false
-				break
-		if ok:
-			free.append(s)
-	if free.is_empty():
-		return -1
-	var pick := free[rng.randi_range(0, free.size() - 1)]
-	used.append(pick)
-	return pick
+			"debris":
+				# A small scatter of rocket pieces (no collision).
+				for n in 3:
+					debris_i += 1
+					var piece := _place_sprite(ground_decor, "Debris%03d" % debris_i, TEX_ROCKET_DEBRIS, Vector2.ONE,
+						pos + Vector2(rng.randf_range(-7, 7), rng.randf_range(-7, 7)))
+					piece.flip_h = rng.randf() < 0.5
+					piece.rotation = rng.randi_range(0, 3) * PI / 2
 
 
 # ---------------------------------------------------------------------------
-# Report: path lengths and the oxygen budget
+# Report: what is on the map and whether the rules hold
 # ---------------------------------------------------------------------------
 
-func _make_report(rewards: Array[Dictionary]) -> void:
-	last_report = {}
-	if rewards.is_empty():
-		return
-	var player := get_node_or_null("Entities/Player")
-	var speed := 250.0
-	if player != null and player.get("speed") != null:
-		speed = float(player.get("speed"))
+func _make_report() -> void:
+	# Everything the player must be able to walk to.
+	var targets := {"hab": HAB_TILE + Vector2i(0, 3), "launch pad": LAUNCH_PAD_TILE, "wreck": ROCKET_TILE + Vector2i(0, 1)}
+	var i := 0
+	for pad in build_pad_tiles():
+		i += 1
+		targets["pad %d" % i] = pad
+	for e in ENTRANCES:
+		targets["%s cave entrance" % e.cave] = e.tile
+	var unreachable: Array[String] = []
+	for key: String in targets:
+		if _distance_to(targets[key]) < 0:
+			unreachable.append(key)
 
-	var nearest := 1 << 30
-	var farthest := 0
-	var unreachable := 0
-	var in_base := 0
 	var metal := 0
 	var ice := 0
+	var nodes_near_base := 0
+	var unreachable_nodes := 0
 	for n in get_node("Entities/Nodes").get_children():
 		var t := Vector2i((n as Node2D).position / TILE)
-		var d := _distance_to(t)
+		var d := -1
+		for dir in DIRS:                         # a deposit is solid: you stand next to it
+			var beside := _distance_to(t + dir)
+			if beside >= 0 and (d < 0 or beside < d):
+				d = beside
 		if d < 0:
-			unreachable += 1
-			continue
-		nearest = mini(nearest, d)
-		farthest = maxi(farthest, d)
-		if CLEARING.grow(BASE_SAFE_RADIUS - CHAMBER_SIZE).has_point(t):
-			in_base += 1
+			unreachable_nodes += 1
+		elif d < Config.STARTER_NODE_MIN_WALK:
+			nodes_near_base += 1
 		if n.get_meta("kind", "") == "metal":
 			metal += 1
 		else:
 			ice += 1
 
-	var near_s := nearest * TILE / speed
-	var far_s := farthest * TILE / speed
+	var craters := 0
+	var craters_near_base := 0
+	for c in get_node("GroundDecor").get_children():
+		if c.name.begins_with("Crater"):
+			craters += 1
+			if _chebyshev(Vector2i((c as Node2D).position / TILE), HAB_TILE) < Config.BASE_SAFE_RADIUS:
+				craters_near_base += 1
+
+	var walkable := 0
+	for v in _walk:
+		walkable += v
 	last_report = {
 		"metal_nodes": metal,
 		"ice_nodes": ice,
-		"reward_chambers": rewards.size(),
-		"dead_ends": _chambers.size(),
-		"unreachable_nodes": unreachable,
-		"nodes_near_base": in_base,
-		"nearest_tiles": nearest,
-		"farthest_tiles": farthest,
-		"nearest_seconds": near_s,
-		"farthest_seconds": far_s,
-		"nearest_share": float(nearest) / maxf(1.0, farthest),
-		# Walking there and back, without craters or harvesting:
-		"nearest_round_trip_o2": 2.0 * near_s * Config.O2_DRAIN_PER_SEC,
-		"farthest_round_trip_o2": 2.0 * far_s * Config.O2_DRAIN_PER_SEC,
-		"craters": get_node("GroundDecor").get_children().filter(func(c: Node) -> bool: return c.name.begins_with("Crater")).size(),
+		"build_pads": get_node("BuildPads").get_child_count(),
+		"entrances": get_node("CaveEntrances").get_child_count(),
+		"unreachable": unreachable,
+		"unreachable_nodes": unreachable_nodes,
+		"nodes_near_base": nodes_near_base,
+		"craters": craters,
+		"craters_near_base": craters_near_base,
+		"rocks": get_node("Entities/Decor").get_child_count(),
+		"pillars": _pillars,
+		"gap_fillers": _fillers.size() + _pillars,
+		"walkable_tiles": walkable,
+		"max_empty_square": largest_empty_square().size.x,
 	}
-	print("world_gen seed %d: %d metal + %d ice nodes in %d chambers (%d dead ends), %d craters" % [
-		map_seed, metal, ice, rewards.size(), _chambers.size(), last_report.craters])
-	print("world_gen: nearest deposit %d tiles (%.1f s one way), farthest %d tiles (%.1f s one way), nearest = %d%% of farthest" % [
-		nearest, near_s, farthest, far_s, roundi(last_report.nearest_share * 100.0)])
-	print("world_gen: walking O2 for a round trip: nearest %.1f, farthest %.1f (+%d per crater, +%d per harvest)" % [
-		last_report.nearest_round_trip_o2, last_report.farthest_round_trip_o2,
-		roundi(Config.CRATER_O2_PENALTY), roundi(Config.O2_HARVEST_COST)])
-	if unreachable > 0:
-		push_warning("world_gen: %d resource nodes cannot be reached" % unreachable)
-	if in_base > 0:
-		push_warning("world_gen: %d resource nodes are next to the base" % in_base)
+	print("world_gen seed %d: surface %dx%d, %d build pads, %d cave entrances, %d metal + %d ice starter deposits" % [
+		map_seed, MAP_SIZE.x, MAP_SIZE.y, last_report.build_pads, last_report.entrances, metal, ice])
+	print("world_gen: %d walkable tiles, %d rock pillars, %d rocks, %d craters, biggest empty patch %dx%d tiles (limit %d)" % [
+		walkable, _pillars, last_report.rocks, craters, last_report.max_empty_square, last_report.max_empty_square,
+		Config.SURFACE_MAX_EMPTY_SQUARE])
+	if not unreachable.is_empty():
+		push_warning("world_gen: cannot be reached on foot: %s" % ", ".join(unreachable))
+	if unreachable_nodes > 0:
+		push_warning("world_gen: %d deposits cannot be reached" % unreachable_nodes)
 
 
 # ---------------------------------------------------------------------------
@@ -1028,24 +892,17 @@ func _place_sprite(parent: Node, node_name: String, tex: Texture2D, scl: Vector2
 	return s
 
 
-func _shuffle(list: Array, rng: RandomNumberGenerator) -> void:
-	for i in range(list.size() - 1, 0, -1):
-		var j := rng.randi_range(0, i)
-		var tmp: Variant = list[i]
-		list[i] = list[j]
-		list[j] = tmp
-
-
-## The node that holds the cliff sprites, drawn right above the Walls layer.
-func _get_or_make_cliffs(walls: Node) -> Node:
-	var cliffs := get_node_or_null("Cliffs")
-	if cliffs == null:
-		cliffs = Node2D.new()
-		cliffs.name = "Cliffs"
-		add_child(cliffs)
-		move_child(cliffs, walls.get_index() + 1)
-		cliffs.owner = _scene_owner()
-	return cliffs
+## A plain Node2D container called `node_name`, placed right after `after` in the
+## scene (so it is drawn just above it). Made once, then reused.
+func _get_or_make(node_name: String, after: Node) -> Node:
+	var container := get_node_or_null(node_name)
+	if container == null:
+		container = Node2D.new()
+		container.name = node_name
+		add_child(container)
+		move_child(container, after.get_index() + 1)
+		container.owner = _scene_owner()
+	return container
 
 
 func _clear_children(container: Node) -> void:
@@ -1061,12 +918,18 @@ func _scene_owner() -> Node:
 	return self
 
 
+## The camera stays inside the map. On a very wide or tall window it zooms in a
+## little more, so the grey outside of the map never shows.
 func _setup_camera() -> void:
 	var cam := get_node_or_null("Entities/Player/Camera2D") as Camera2D
 	if cam == null:
 		return
+	var map_pixels := Vector2(MAP_SIZE * TILE)
+	var view := Vector2(get_viewport().get_visible_rect().size)
+	var zoom := maxf(camera_zoom, maxf(view.x / map_pixels.x, view.y / map_pixels.y))
 	cam.limit_left = 0
 	cam.limit_top = 0
-	cam.limit_right = MAP_SIZE.x * TILE
-	cam.limit_bottom = MAP_SIZE.y * TILE
-	cam.zoom = Vector2(camera_zoom, camera_zoom)
+	cam.limit_right = int(map_pixels.x)
+	cam.limit_bottom = int(map_pixels.y)
+	cam.zoom = Vector2(zoom, zoom)
+	cam.reset_smoothing()                        # no slow pan after arriving somewhere

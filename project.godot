@@ -11,13 +11,15 @@ config_version=5
 [application]
 
 config/name="Nasa"
-run/main_scene="res://scenes/World.tscn"
+run/main_scene="res://scenes/TitleScreen.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
 
 [autoload]
 
 GameState="*uid://d2cvfgysg3igm"
+Travel="*res://scripts/travel.gd"
+Builder="*res://scripts/builder.gd"
 
 [display]
 

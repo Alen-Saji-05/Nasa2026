@@ -12,6 +12,12 @@ signal metal_changed(value: int)
 signal message(text: String)
 ## The game is lost. `reason` is "Out of oxygen" or "Out of water".
 signal game_ended(reason: String)
+## The player went somewhere else. `place` is "Surface" or for example "Ice Cave L2".
+signal location_changed(place: String)
+## A machine was built (or everything was reset).
+signal machines_changed
+## Power made, power used or the battery changed.
+signal power_changed
 
 var oxygen: float = Config.O2_START
 var water: float = Config.WATER_START
@@ -29,11 +35,36 @@ var o2_generator_built: bool = false
 var o2_generator_powered: bool = true
 var o2_generator_running: bool = false
 
+# --- Where the player is (see travel.gd) ---
+## "" on the surface, otherwise a cave id from Config.CAVES.
+var cave_id: String = ""
+## 0 = the first layer of the cave.
+var cave_layer: int = 0
+## How the player enters the scene that is loading: "" (new game),
+## "from_surface", "ladder_down", "ladder_up" or "entrance:<cave id>".
+var arrival: String = ""
+## Uses left of every deposit that was harvested: deposit id -> charges.
+## Deposits that are not in here are still full.
+var node_charges: Dictionary = {}
+
+# --- Machines and power (see builder.gd, machine.gd) ---
+## Every machine that was built: build pad id -> machine id ("pad_03" -> "solar").
+var machines: Dictionary = {}
+## How bright the sun is, 0 to 1. Day/night and dust storms will change it later.
+var sun: float = 1.0
+var battery_charge: float = Config.HAB_BATTERY_CAPACITY
+## Power per second, from the last frame.
+var power_made: float = 0.0
+var power_used: float = 0.0
+## True after a successful launch.
+var game_won: bool = false
+
 
 func _process(delta: float) -> void:
 	if game_over:
 		return
 
+	_run_power(delta)
 	_run_o2_generator(delta)
 
 	if oxygen > 0.0:
@@ -131,10 +162,123 @@ func spend_metal(amount: int) -> bool:
 	return true
 
 
+## Pays for something. Returns false and changes nothing if there is not enough.
+func spend(metal_cost: int, water_cost: float) -> bool:
+	if game_over or metal_cost > metal or water_cost > water:
+		return false
+	metal -= metal_cost
+	water -= water_cost
+	metal_changed.emit(metal)
+	water_changed.emit(water, water_limit)
+	return true
+
+
+# --- Machines and power ---
+
+## What stops this machine from being paid for, or "" if it can be.
+## For example "Need 15 metal (you have 3)".
+func cost_problem(machine_id: String) -> String:
+	var def := Config.machine(machine_id)
+	if def.is_empty():
+		return "Unknown machine"
+	var missing: Array[String] = []
+	if metal < int(def.metal):
+		missing.append("%d metal (you have %d)" % [def.metal, metal])
+	if water < float(def.water):
+		missing.append("%d water (you have %d)" % [def.water, floori(water)])
+	if missing.is_empty():
+		return ""
+	return "Need " + " and ".join(missing)
+
+
+## Records a built machine and applies what it does once (a tank raises the water limit).
+func add_machine(pad_id: String, machine_id: String) -> void:
+	machines[pad_id] = machine_id
+	if machine_id == "water_tank":
+		add_water_limit(Config.WATER_TANK_LIMIT_BONUS)
+	if machine_id == "o2_generator":
+		o2_generator_built = true
+	machines_changed.emit()
+
+
+func machine_count(machine_id: String) -> int:
+	return machines.values().count(machine_id)
+
+
+func has_built(machine_id: String) -> bool:
+	return machine_count(machine_id) > 0
+
+
+func battery_capacity() -> float:
+	return Config.HAB_BATTERY_CAPACITY + machine_count("battery") * Config.BATTERY_CAPACITY_BONUS
+
+
+## True while the O2 generator really makes oxygen (wants to run, has power and water).
+func o2_generator_working() -> bool:
+	return o2_generator_built and o2_generator_running and o2_generator_powered and water > 0.0
+
+
+## Why the O2 generator stands still although it should run, or "".
+func o2_generator_problem() -> String:
+	if not o2_generator_built or not o2_generator_running:
+		return ""
+	if not o2_generator_powered:
+		return "no power"
+	if water <= 0.0:
+		return "no water"
+	return ""
+
+
+## Power made = solar (by sun) + backup. Power used = the O2 generator while it runs.
+## Spare power fills the battery; missing power comes out of it. When the battery
+## is empty and there is not enough power, the O2 generator stops.
+func _run_power(delta: float) -> void:
+	power_made = machine_count("solar") * Config.SOLAR_OUTPUT * sun + machine_count("backup_power") * Config.BACKUP_OUTPUT
+	var wants := o2_generator_built and o2_generator_running and water > 0.0
+	var need := Config.O2_GEN_POWER_USE if wants else 0.0
+	var capacity := battery_capacity()
+	# After running dry, wait for a little charge before starting again (no flicker).
+	var reserve := 0.0 if o2_generator_powered else 1.0
+	if power_made >= need or battery_charge > reserve:
+		o2_generator_powered = true
+		power_used = need
+		battery_charge = clampf(battery_charge + (power_made - need) * delta, 0.0, capacity)
+	else:
+		o2_generator_powered = false
+		power_used = 0.0
+		battery_charge = clampf(battery_charge + power_made * delta, 0.0, capacity)
+	power_changed.emit()
+
+
+## The rocket got away: the game is won.
+func win(reason: String) -> void:
+	if game_over:
+		return
+	game_won = true
+	_end_game(reason)
+
+
 # --- Messages, game over, restart ---
 
 func say(text: String) -> void:
 	message.emit(text)
+
+
+# --- Location ---
+
+## Records where the player is going. `how` is kept in `arrival` for the next scene.
+func set_location(cave: String, layer: int, how: String) -> void:
+	cave_id = cave
+	cave_layer = layer
+	arrival = how
+	location_changed.emit(location_name())
+
+
+## "Surface", or the cave and layer: "Ice Cave L2".
+func location_name() -> String:
+	if cave_id == "":
+		return "Surface"
+	return "%s L%d" % [Config.cave_name(cave_id), cave_layer + 1]
 
 
 ## Puts every value back to the start. Call before reloading the scene.
@@ -150,9 +294,22 @@ func reset() -> void:
 	o2_generator_built = false
 	o2_generator_powered = true
 	o2_generator_running = false
+	cave_id = ""
+	cave_layer = 0
+	arrival = ""
+	node_charges.clear()
+	machines.clear()
+	sun = 1.0
+	battery_charge = Config.HAB_BATTERY_CAPACITY
+	power_made = 0.0
+	power_used = 0.0
+	game_won = false
 	oxygen_changed.emit(oxygen)
 	water_changed.emit(water, water_limit)
 	metal_changed.emit(metal)
+	location_changed.emit(location_name())
+	machines_changed.emit()
+	power_changed.emit()
 
 
 func _end_game(reason: String) -> void:

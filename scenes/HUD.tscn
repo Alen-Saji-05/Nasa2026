@@ -1,0 +1,166 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scenes/hud.gd" id="1_f6qnu"]
+[ext_resource type="Texture2D" path="res://art/oxgen_bar/oxygen_bar_100.png" id="2_k4w17"]
+[ext_resource type="Texture2D" path="res://art/water_bar/water_bar_100.png" id="3_twldb"]
+[ext_resource type="Texture2D" path="res://art/metal_scrap_bar/metal_scrap_icon.png" id="4_8cuoo"]
+[ext_resource type="Texture2D" path="res://art/metal_scrap_bar/metal_counter_frame.png" id="5_cf6ij"]
+[ext_resource type="Texture2D" path="res://art/metal_scrap_bar/digit_0.png" id="6_meimr"]
+
+[node name="UI" type="CanvasLayer" unique_id=323933095]
+
+[node name="HUD" type="Control" parent="." unique_id=500557811]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_f6qnu")
+
+[node name="Bars" type="VBoxContainer" parent="HUD" unique_id=804737829]
+layout_mode = 1
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 300.0
+offset_bottom = 140.0
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="OxygenRow" type="HBoxContainer" parent="HUD/Bars" unique_id=1363522414]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="OxygenBar" type="TextureRect" parent="HUD/Bars/OxygenRow" unique_id=550128229]
+custom_minimum_size = Vector2(212, 36)
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("2_k4w17")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="OxygenValue" type="Label" parent="HUD/Bars/OxygenRow" unique_id=1043703421]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_outline_color = Color(0.1, 0.05, 0.05, 1)
+theme_override_constants/outline_size = 4
+text = "100"
+
+[node name="WaterRow" type="HBoxContainer" parent="HUD/Bars" unique_id=1831245035]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="WaterBar" type="TextureRect" parent="HUD/Bars/WaterRow" unique_id=1343026485]
+custom_minimum_size = Vector2(212, 36)
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("3_twldb")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="WaterValue" type="Label" parent="HUD/Bars/WaterRow" unique_id=249361837]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_outline_color = Color(0.1, 0.05, 0.05, 1)
+theme_override_constants/outline_size = 4
+text = "50/60"
+
+[node name="MetalRow" type="HBoxContainer" parent="HUD/Bars" unique_id=1604266965]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="MetalIcon" type="TextureRect" parent="HUD/Bars/MetalRow" unique_id=2606039]
+custom_minimum_size = Vector2(48, 36)
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("4_8cuoo")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="MetalFrame" type="TextureRect" parent="HUD/Bars/MetalRow" unique_id=332339212]
+custom_minimum_size = Vector2(86, 40)
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("5_cf6ij")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Digits" type="HBoxContainer" parent="HUD/Bars/MetalRow/MetalFrame" unique_id=26543972]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 2
+alignment = 1
+
+[node name="Digit1" type="TextureRect" parent="HUD/Bars/MetalRow/MetalFrame/Digits" unique_id=1010424278]
+custom_minimum_size = Vector2(15, 18)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+texture = ExtResource("6_meimr")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Digit2" type="TextureRect" parent="HUD/Bars/MetalRow/MetalFrame/Digits" unique_id=1734032807]
+custom_minimum_size = Vector2(15, 18)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+texture = ExtResource("6_meimr")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Digit3" type="TextureRect" parent="HUD/Bars/MetalRow/MetalFrame/Digits" unique_id=182156103]
+custom_minimum_size = Vector2(15, 18)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+texture = ExtResource("6_meimr")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Message" type="Label" parent="HUD" unique_id=2083546779]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -84.0
+offset_bottom = -52.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_outline_color = Color(0.1, 0.05, 0.05, 1)
+theme_override_constants/outline_size = 6
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="GameOver" type="ColorRect" parent="HUD" unique_id=152011187]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.08, 0.02, 0.02, 0.72)
+
+[node name="Label" type="Label" parent="HUD/GameOver" unique_id=1630201151]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 36
+text = "Out of oxygen"
+horizontal_alignment = 1
+vertical_alignment = 1
