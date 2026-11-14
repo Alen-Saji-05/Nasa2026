@@ -11,5 +11,5 @@ offset_right = 3000.0
 offset_bottom = 2000.0
 
 [node name="player" parent="." unique_id=1170592067 instance=ExtResource("1_0xm2m")]
-position = Vector2(655, 215)
+position = Vector2(637, 326)
 script = ExtResource("2_h2yge")
