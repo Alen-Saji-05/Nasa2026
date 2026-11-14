@@ -63,13 +63,25 @@ func _run(show_maps: bool) -> void:
 				ore_nodes[ore] = ore_nodes.get(ore, 0) + 1
 	_check("cave deposits by ore: %s" % str(ore_nodes), ores_ok and ore_nodes.get("iron", 0) >= 2
 		and ore_nodes.get("aluminum", 0) >= 4 and ore_nodes.get("sulfur", 0) >= 2 and ore_nodes.get("electronics", 0) >= 1)
-	# What the six ship repairs and the CO2 capture machine need in total.
-	var need := {"iron": 20, "aluminum": 28, "sulfur": 8, "electronics": 2}
+	# Ore needed to build everything in the Build Book once (ingots and wire are
+	# refined 1:1 from ore), against all the ore in the caves plus the surface iron.
+	var to_ore := {"iron_ingot": "iron", "aluminum_ingot": "aluminum", "sulfur_compound": "sulfur", "wire": "iron"}
+	var need := {}
+	for id: String in Config.BOOK_ORDER:
+		var cost: Dictionary = Config.machine(id).cost
+		for item_id: String in cost:
+			var ore: String = to_ore.get(item_id, item_id)
+			var amount: int = cost[item_id] * (1 if item_id != "wire" else 1)
+			need[ore] = need.get(ore, 0) + amount
+	need["iron"] += 2                            # the two wires that batteries and CO2 capture use
+	var have := {}
+	for id: String in ["iron", "aluminum", "sulfur", "electronics"]:
+		have[id] = ore_nodes.get(id, 0) * Config.NODE_CHARGES * int(Config.item(id).per_harvest)
+	have["iron"] += Config.SURFACE_METAL_NODES * Config.NODE_CHARGES * int(Config.item("iron").per_harvest)
 	var enough := true
-	for id: String in need:
-		if ore_nodes.get(id, 0) * Config.NODE_CHARGES * int(Config.item(id).per_harvest) < need[id]:
-			enough = false
-	_check("the caves hold enough ore for every ship repair %s" % str(need), enough)
+	for id: String in have:
+		enough = enough and have[id] >= need.get(id, 0)
+	_check("enough ore for the whole Build Book: need %s, the world has %s" % [str(need), str(have)], enough)
 
 	# --- every cave and layer is different ---
 	var unique := {}

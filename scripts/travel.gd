@@ -5,6 +5,7 @@ extends CanvasLayer
 ##   Travel.enter_cave("ice")          from a cave entrance on the surface
 ##   Travel.change_layer(1, "ladder_down")   down a ladder
 ##   Travel.exit_cave()                out of the cave, back to its entrance
+##   Travel.enter_shelter() / exit_shelter()   into the Emergency Shelter and back out
 ##
 ## Where the player is lives in GameState (cave_id, cave_layer, arrival).
 ## The scene that loads reads those and puts the player in the right spot.
@@ -44,6 +45,16 @@ func change_layer(layer_index: int, how: String) -> void:
 ## Out of the cave: back on the surface, in front of the entrance.
 func exit_cave() -> void:
 	_go("", 0, "entrance:" + GameState.cave_id, Config.WORLD_SCENE)
+
+
+## Into the Emergency Shelter (scenes/Shelter.tscn). Hazards keep running outside.
+func enter_shelter() -> void:
+	_go("", 0, "shelter", Config.SHELTER_SCENE)
+
+
+## Back out, in front of the shelter's door.
+func exit_shelter() -> void:
+	_go("", 0, "shelter_exit", Config.WORLD_SCENE)
 
 
 func _go(cave_id: String, layer_index: int, how: String, scene: String) -> void:

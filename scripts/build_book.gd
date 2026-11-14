@@ -34,6 +34,7 @@ var materials: VBoxContainer
 var build: Button
 var problem: Label
 var counter: Label
+var section: Label
 
 
 func _ready() -> void:
@@ -140,6 +141,7 @@ func _refresh() -> void:
 	picture.texture = load((def.get("idle", def.get("levels", [])) as Array)[0])
 	picture.modulate = Color.WHITE if unlocked else Color(0.12, 0.08, 0.08)
 	title.text = def.name if unlocked else "???"
+	section.text = ""
 	for row in materials.get_children():
 		materials.remove_child(row)
 		row.queue_free()
@@ -152,8 +154,18 @@ func _refresh() -> void:
 		problem.text = ""
 		return
 	purpose.text = def.description
+	var kind: String = def.get("kind", "machine")
 	var built: bool = GameState.has_built(id)
-	status.text = "BUILT" if built else ("NEW!" if is_new else "DISCOVERED")
+	status.text = "NEW!" if is_new else "DISCOVERED"
+	if kind == "module" and GameState.installed.has(id):
+		status.text = "INSTALLED ON THE SHIP"
+	elif kind == "module" and built:
+		status.text = "READY - INSTALL AT THE SHIP"
+	elif kind == "machine" and built:
+		status.text = "BUILT"
+	build.text = "CRAFT" if kind == "item" else "BUILD"
+	section.text = {"machine": "BASE MACHINE", "item": "CRAFTING", "module": "SHIP REPAIR  %d / %d" % [
+		GameState.installed.size(), Config.REPAIR_ORDER.size()]}[kind]
 	status.add_theme_color_override("font_color", GOOD)
 	for item_id: String in def.cost:
 		var have: int = GameState.item_count(item_id)
@@ -179,8 +191,26 @@ func _refresh() -> void:
 
 func _on_build() -> void:
 	var id := page_id()
+	if Config.machine(id).get("kind", "machine") != "machine":
+		Builder.craft(id)                        # items and ship modules: right here
+		_refresh()
+		return
 	close()
 	Builder.start_placing(id)
+
+
+## A hint points at a page: the icon bounces for a while and the book opens there.
+func highlight(id: String) -> void:
+	var index := Config.BOOK_ORDER.find(id)
+	if index < 0:
+		return
+	page = index
+	if GameState.recipe_unlocked(id) and not GameState.new_recipes.has(id):
+		GameState.new_recipes.append(id)          # the page shimmers when it is opened
+	icon.pivot_offset = icon.size * 0.5
+	var tween := create_tween().set_loops(8)
+	tween.tween_property(icon, "scale", Vector2(1.4, 1.4), 0.2)
+	tween.tween_property(icon, "scale", Vector2.ONE, 0.25)
 
 
 ## New recipes: a message, and the icon pulses a few times.
@@ -267,6 +297,11 @@ func _make_book() -> void:
 	left.position = BOOK_SIZE * Vector2(0.085, 0.1)
 	left.size = BOOK_SIZE * Vector2(0.37, 0.64)
 	content.add_child(left)
+	section = _label("", 12)
+	section.name = "Section"
+	section.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	section.add_theme_color_override("font_color", Color(0.6, 0.3, 0.12))
+	left.add_child(section)
 	title = _label("", 20)
 	title.name = "Title"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -274,7 +309,7 @@ func _make_book() -> void:
 	left.add_child(title)
 	picture = TextureRect.new()
 	picture.name = "Picture"
-	picture.custom_minimum_size = Vector2(0, 150)
+	picture.custom_minimum_size = Vector2(0, 130)
 	picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	left.add_child(picture)

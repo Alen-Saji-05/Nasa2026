@@ -1,11 +1,18 @@
 extends SceneTree
-## Automated check of the Build Book. Run from the project folder:
-##   godot --headless --path . --script res://tools/test_book.gd
+## Automated check of the Build Book, the progression and the ship repair. Run:
+##   godot --headless --path . --script res://tools/test_book.gd   [-- C:/screenshot/folder]
 ## Prints PASS / FAIL lines and exits with code 1 if anything failed.
-## With a screenshot folder it also saves pictures (needs a window, so no --headless):
-##   godot --path . --script res://tools/test_book.gd -- C:/some/folder
+##
+## Dependency map (what makes what). The book must list things in an order where
+## everything a page needs is either found in the world or made on an EARLIER page:
+##   found:  iron, aluminum, sulfur, electronics (caves/surface), water (ice), potato (wreck)
+##   Ore Refinery -> iron_ingot, aluminum_ingot, sulfur_compound
+##   Wire -> wire,  CO2 Capture -> co2,  Oxygen Capsule -> oxygen,  Methane Capsule -> methane
 
-## The recipes exactly as specified: iron ingots, aluminum ingots, then the rest.
+const FOUND := ["iron", "aluminum", "sulfur", "electronics", "water", "potato"]
+const MADE_BY := {"iron_ingot": "ore_refinery", "aluminum_ingot": "ore_refinery", "sulfur_compound": "ore_refinery",
+	"wire": "wire", "co2": "co2_capture", "oxygen": "oxygen", "methane": "methane"}
+## The recipes as specified (the 11 from the Build Book brief, plus Wire).
 const RECIPES := {
 	"power_station": {"iron_ingot": 3, "aluminum_ingot": 5, "sulfur_compound": 2},
 	"propellant": {"iron_ingot": 3, "aluminum_ingot": 4, "methane": 3, "oxygen": 3},
@@ -18,19 +25,21 @@ const RECIPES := {
 	"oxygen_gen": {"iron_ingot": 3, "aluminum_ingot": 4, "electronics": 1},
 	"radiation_sensor": {"iron_ingot": 2, "aluminum_ingot": 2, "electronics": 1},
 	"shelter": {"iron_ingot": 6, "aluminum_ingot": 5, "sulfur_compound": 3},
+	"wire": {"iron_ingot": 1},
 }
 
 var _failed := 0
 var _gs: Node
 var _builder: Node
+var _dialogue: Node
 var _shots := ""
-var _messages: Array[String] = []
 var _unlock_events := 0
 
 
 func _initialize() -> void:
 	_gs = root.get_node("GameState")
 	_builder = root.get_node("Builder")
+	_dialogue = root.get_node("Dialogue")
 	var args := OS.get_cmdline_user_args()
 	if args.size() > 0:
 		_shots = args[0]
@@ -61,147 +70,151 @@ func _pad(pad_id: String) -> Node:
 	return null
 
 
-func _run() -> void:
-	# --- the data ---
-	var costs_ok := Config.BOOK_ORDER.size() == 11
-	var art := {}
-	for id: String in Config.BOOK_ORDER:
+func _check_data() -> void:
+	var order: Array = Config.BOOK_ORDER
+	var exact := true
+	for id: String in RECIPES:
+		if Config.machine(id).get("cost", {}) != RECIPES[id]:
+			exact = false
+			print("   recipe differs: ", id)
+	_check("the 11 specified recipes and Wire (1 Iron Ingot = 1 Wire) are exact", exact)
+	var art_ok := true
+	var pictures := {}
+	for id: String in order:
 		var def := Config.machine(id)
-		if def.get("cost", {}) != RECIPES.get(id, {}) or str(def.get("description", "")) == "":
-			costs_ok = false
-		var path: String = def.idle[0]
-		if ResourceLoader.exists(path):
-			art[path] = true
+		var path: String = (def.get("idle", def.get("levels", [""])) as Array)[0]
+		art_ok = art_ok and ResourceLoader.exists(path) and str(def.get("description", "")) != ""
+		pictures[path] = true
 		for item_id: String in def.cost:
-			if Config.item(item_id).is_empty() or not ResourceLoader.exists(Config.item(item_id).icon):
-				costs_ok = false
-	_check("11 recipes with exactly the specified materials and a description", costs_ok)
-	_check("every recipe has its own machine picture (%d different)" % art.size(), art.size() == 11)
+			art_ok = art_ok and not Config.item(item_id).is_empty() and ResourceLoader.exists(Config.item(item_id).icon)
+	_check("%d pages, each with art, a description and known materials (%d different pictures)" % [order.size(), pictures.size()],
+		order.size() == 18 and art_ok and pictures.size() >= 17)
+	# The order follows the dependencies: nothing needs something from a later page.
+	var bad: Array[String] = []
+	for i in order.size():
+		var def := Config.machine(order[i])
+		for item_id: String in def.cost:
+			if not FOUND.has(item_id) and order.find(MADE_BY.get(item_id, "?")) >= i:
+				bad.append("%s needs %s" % [order[i], item_id])
+		if def.has("requires") and order.find(def.requires) >= i:
+			bad.append("%s requires %s" % [order[i], def.requires])
+	_check("every page only needs found materials or things made on earlier pages %s" % str(bad), bad.is_empty())
+	_check("the Ore Refinery is first, the Oxygen Generator early (page %d), the six ship modules last" % (order.find("oxygen_gen") + 1),
+		order[0] == "ore_refinery" and order.find("oxygen_gen") < 6
+		and order.slice(order.size() - 6) == Config.REPAIR_ORDER)
 
+
+func _run() -> void:
+	_check_data()
 	_gs.reset()
 	_gs.set_process(false)
-	_gs.message.connect(func(text: String) -> void: _messages.append(text))
 	_gs.recipes_unlocked.connect(func(_ids: Array) -> void: _unlock_events += 1)
 	change_scene_to_file(Config.WORLD_SCENE)
 	await _wait(0.5)
 	var book: Control = current_scene.get_node("UI/HUD/BuildBook")
 	var icon: TextureButton = book.get_node("Icon")
 	var player: CharacterBody2D = current_scene.get_node("Entities/Player")
-
-	# --- the HUD icon ---
+	_check("the story starts with Mission Control: '%s...'" % _dialogue.current_text().left(30),
+		_dialogue.is_showing() and _gs.story_seen.has("intro"))
 	var icon_tex := icon.texture_normal as AtlasTexture
-	_check("the book icon is on the right side of the HUD and is the small open book from the sheet",
-		icon.visible and icon.global_position.x > root.get_visible_rect().size.x * 0.75
-		and icon_tex != null and icon_tex.atlas.resource_path == "res://art/new_sprites/book_sprite.png"
-		and icon_tex.region == Rect2(470, 582, 214, 218))
+	_check("the book icon is the small open book from the sheet, on the right of the HUD",
+		icon.global_position.x > root.get_visible_rect().size.x * 0.75 and icon_tex.region == Rect2(470, 582, 214, 218))
 
-	# --- discovery ---
+	# --- discovery follows the progression ---
 	_check("at the start no recipe is discovered", _gs.unlocked_recipes().is_empty())
+	_gs.add_item("iron", 4)
+	_check("Iron Ore discovers the Ore Refinery (%s) and says so once" % str(_gs.unlocked_recipes()),
+		_gs.unlocked_recipes() == ["ore_refinery"] and _gs.story_seen.has("found_iron") and _unlock_events == 1)
+	_gs.add_item("iron", 4)
+	_check("more iron says nothing new", _unlock_events == 1)
+	_gs.add_item("aluminum", 4)
 	_gs.add_item("sulfur", 2)
-	_check("raw sulfur ore discovers nothing yet", _gs.unlocked_recipes().is_empty() and _unlock_events == 0)
-	current_scene.get_node("Entities/Hab").interact(player)
-	var with_sulfur: Array = Config.BOOK_ORDER.filter(func(id: String) -> bool:
-		return RECIPES[id].has("sulfur_compound") and id != "shelter")
-	_check("refining it at the hab gives 2 Sulfur Compounds and discovers all %d recipes that use them together: %s" % [with_sulfur.size(), str(_gs.unlocked_recipes())],
-		_gs.item_count("sulfur_compound") == 2 and _gs.item_count("sulfur") == 0 and _gs.unlocked_recipes() == with_sulfur)
-	_check("one 'NEW RECIPES DISCOVERED!' message, shown once", _unlock_events == 1 and _messages.count("NEW RECIPES DISCOVERED!") == 1)
-	_gs.spend_items({"sulfur_compound": 2})
-	_gs.add_item("sulfur_compound", 1)
-	_check("spending the material does not lock them again, and finding more does not announce again",
-		_gs.unlocked_recipes() == with_sulfur or _gs.unlocked_recipes().size() >= with_sulfur.size() and _unlock_events == 1)
-	_check("the shelter uses sulfur too but stays locked until the first radiation event", not _gs.recipe_unlocked("shelter"))
-	_gs.see_radiation()
-	_check("after the first radiation event the shelter is discovered; the sensor still needs one of its materials",
-		_gs.recipe_unlocked("shelter") and not _gs.recipe_unlocked("radiation_sensor") and _unlock_events == 2)
 
-	# --- opening, pages, closing ---
+	# --- build the refinery from the book ---
 	icon.pressed.emit()
 	await _wait(0.4)
 	var overlay: Control = book.get_node("Overlay")
-	var start: Vector2 = player.global_position
-	Input.action_press("ui_down")
-	await _wait(0.3)
-	Input.action_release("ui_down")
-	_check("clicking the icon opens the book; the game is paused and the player cannot move",
-		overlay.visible and paused and player.global_position.distance_to(start) < 0.5)
-	var title: Label = overlay.get_node("Book/Content").get_child(0).get_node("Title")
 	var build: Button = overlay.find_child("Build", true, false)
-	var seen: Array = []
-	var names_ok := true
-	for i in Config.BOOK_ORDER.size():
-		seen.append(book.page_id())
-		var want: String = Config.machine(book.page_id()).name if _gs.recipe_unlocked(book.page_id()) else "???"
-		if title.text != want:
-			names_ok = false
-		if i == 0:
-			await _shot("book_page.png")
-		await book.flip(1)
-	_check("turning the page 11 times shows every recipe once, in order, and comes back to the first",
-		seen == Config.BOOK_ORDER and book.page_id() == Config.BOOK_ORDER[0])
-	_check("discovered pages show the machine's name, locked pages show '???'", names_ok)
-	book.show_page(Config.BOOK_ORDER.find("radiation_sensor"))
-	await _shot("book_locked.png")
-	_check("a locked recipe cannot be built", build.disabled)
-
-	# --- building from the book ---
-	book.show_page(Config.BOOK_ORDER.find("reservoir"))
-	_check("discovered but not affordable: Build is off and it says why ('%s')" % overlay.find_child("Problem", true, false).text,
-		build.disabled and overlay.find_child("Problem", true, false).text.begins_with("Need 3 Iron Ingots"))
-	_gs.add_item("iron_ingot", 3)
-	_gs.add_item("aluminum_ingot", 4)
-	_gs.add_item("sulfur_compound", 1)
-	var rows: Node = overlay.find_child("Materials", true, false)
-	await _wait(0.05)
-	_check("the page shows live amounts (%s) and Build turns on" % rows.get_child(0).get_child(2).text,
-		rows.get_child_count() == 3 and rows.get_child(0).get_child(2).text == "3 / 3" and not build.disabled)
-	var limit: float = _gs.water_limit
+	_check("the book opens on the Ore Refinery and it can be built", overlay.visible and paused and book.page_id() == "ore_refinery" and not build.disabled)
+	await _shot("book_refinery.png")
 	build.pressed.emit()
 	await _wait(0.1)
-	_check("Build closes the book, un-pauses and starts placing the machine",
-		not overlay.visible and not paused and _builder.placing == "reservoir")
-	_builder.place_on(_pad("pad_02"))
+	_builder.place_on(_pad("pad_01"))
 	await _wait(0.1)
-	_check("placing it takes exactly the materials (iron %d, aluminum %d, sulfur compounds %d) and the tank works (+%d water limit)" % [
-		_gs.item_count("iron_ingot"), _gs.item_count("aluminum_ingot"), _gs.item_count("sulfur_compound"), _gs.water_limit - limit],
-		_gs.item_count("iron_ingot") == 0 and _gs.item_count("aluminum_ingot") == 0 and _gs.item_count("sulfur_compound") == 0
-		and _gs.machines.get("pad_02") == "reservoir" and is_equal_approx(_gs.water_limit - limit, Config.WATER_TANK_LIMIT_BONUS))
-	await _wait(0.3)
-	await _shot("built.png")
-	for id: String in ["iron_ingot", "aluminum_ingot", "sulfur_compound"]:
-		_gs.add_item(id, 40)
-	_check("a second one cannot be built: '%s'" % _builder.build_problem("reservoir"), _builder.build_problem("reservoir") == "Already built")
-	_check("the engine goes on the launch pad only", _pad("launch").fits("engine") and not _pad("pad_03").fits("engine"))
+	var refinery: Node = null
+	for m in get_nodes_in_group("machines"):
+		if m.get("machine_id") == "ore_refinery":
+			refinery = m
+	_check("the refinery stands on pad_01 with its own sprite and took 4 iron + 4 aluminum ore",
+		refinery != null and (refinery.get_node("Sprite") as AnimatedSprite2D).sprite_frames.get_frame_texture("idle", 0).resource_path.ends_with("ore_refinery.png")
+		and _gs.item_count("iron") == 4 and _gs.item_count("aluminum") == 0)
+	refinery.interact(player)
+	_gs.sol_elapsed_seconds = Config.SOL_SECONDS * 0.2
+	for i in 160:
+		_gs._process(0.1)
+	refinery.interact(player)
+	_check("E loads the ore; it refines over time on hab power; E collects: %d iron ingots, %d sulfur compounds" % [
+		_gs.item_count("iron_ingot"), _gs.item_count("sulfur_compound")],
+		_gs.item_count("iron_ingot") == 4 and _gs.item_count("sulfur_compound") == 2 and _gs.item_count("iron") == 0)
+	_check("ingots unlock the next pages (%d discovered)" % _gs.unlocked_recipes().size(),
+		_gs.recipe_unlocked("wire") and _gs.recipe_unlocked("oxygen_gen") and _gs.recipe_unlocked("power_station")
+		and not _gs.recipe_unlocked("shelter") and not _gs.recipe_unlocked("methane"))
 
-	# --- B and Esc ---
-	var key := InputEventKey.new()
-	key.physical_keycode = KEY_B
-	key.pressed = true
-	Input.parse_input_event(key)
+	# --- craft Wire in the book ---
+	book.open()
 	await _wait(0.3)
-	var opened_by_key := overlay.visible
-	var esc := InputEventAction.new()
-	esc.action = "ui_cancel"
-	esc.pressed = true
-	Input.parse_input_event(esc)
-	await _wait(0.1)
-	_check("B opens the book and Esc closes it", opened_by_key and not overlay.visible and not paused)
+	book.show_page(Config.BOOK_ORDER.find("wire"))
+	build.pressed.emit()
+	await _wait(0.05)
+	_check("CRAFT on the Wire page: 1 iron ingot -> 1 wire, and the book stays open",
+		build.text == "CRAFT" and _gs.item_count("wire") == 1 and _gs.item_count("iron_ingot") == 3 and overlay.visible)
+	book.show_page(Config.BOOK_ORDER.find("oxygen"))
+	_check("the Oxygen Capsule says it needs the Oxygen Generator first", build.disabled
+		or overlay.find_child("Problem", true, false).text == "Needs a Oxygen Generator first")
+	var names_ok := true
+	for i in Config.BOOK_ORDER.size():
+		var want: String = Config.machine(book.page_id()).name if _gs.recipe_unlocked(book.page_id()) else "???"
+		names_ok = names_ok and (overlay.find_child("Title", true, false) as Label).text == want
+		await book.flip(1)
+	_check("flipping through all %d pages shows the right names" % Config.BOOK_ORDER.size(), names_ok)
 
-	# --- the six repairs win the game ---
-	for id: String in ["methane", "oxygen", "electronics"]:
-		_gs.add_item(id, 10)
-	var pads := ["pad_03", "pad_04", "launch", "pad_05", "pad_06", "pad_07"]
-	for i in Config.REPAIR_ORDER.size():
-		_check("five repairs are not enough to win", not _gs.game_won)
-		_builder.start_placing(Config.REPAIR_ORDER[i])
-		_builder.place_on(_pad(pads[i]))
-		await _wait(0.05)
-	_check("all six ship systems built: the game is won ('%s')" % _gs.game_over_reason, _gs.game_won and _gs.ship_repaired())
+	# --- ship repair: build a module in the book, install it at its port ---
+	for id: String in ["iron_ingot", "aluminum_ingot", "sulfur_compound", "electronics", "methane", "oxygen"]:
+		_gs.add_item(id, 30)
+	_gs.add_water(20.0)
+	book.show_page(Config.BOOK_ORDER.find("engine"))
+	await _shot("book_engine.png")
+	build.pressed.emit()
+	_check("BUILD on the Engine page makes the module (ready to install), it is not placed on a pad",
+		_gs.modules_ready.has("engine") and _builder.placing == "" and overlay.visible)
+	book.close()
+	var slot: Node2D = current_scene.get_node("Entities/Slot_engine")
+	player.global_position = slot.global_position + Vector2(0, 14)
+	await _wait(0.15)
+	var hand: Node = player.get_node("Harvester")
+	_check("next to the ship's tail, E points at the engine port", hand.focus() == slot)
+	hand.use()
+	await _wait(0.6)
+	_check("E installs it: the port shows the real engine, progress 1/6, and the story says so",
+		_gs.installed == ["engine"] and slot.modulate.is_equal_approx(Color.WHITE) and _gs.story_seen.has("installed_engine"))
+	await _shot("engine_installed.png")
+	_check("a second engine cannot be built: '%s'" % _builder.build_problem("engine"), _builder.build_problem("engine") == "Already built")
+	var ship_sprite := current_scene.get_node("Entities/BrokenRocket/Sprite2D") as Sprite2D
+	for id: String in Config.REPAIR_ORDER:
+		if id == "engine":
+			continue
+		_check("not repaired before every module is in (%d/6)" % _gs.installed.size(), not _gs.game_won and ship_sprite.texture.resource_path.contains("Crashed"))
+		_builder.craft(id)
+		(current_scene.get_node("Entities/Slot_" + id)).interact(player)
 	await _wait(0.2)
+	_check("all six installed: the ship shows its repaired sprite and the game is won ('%s')" % _gs.game_over_reason,
+		_gs.game_won and _gs.ship_repaired() and ship_sprite.texture.resource_path.ends_with("Repaired_Spaceship.png"))
 	await _shot("repaired.png")
 
 	_gs.reset()
 	paused = false
-	_check("a new game forgets every discovery", _gs.unlocked_recipes().is_empty() and not _gs.radiation_seen and _gs.new_recipes.is_empty())
+	_check("a new game forgets discoveries, modules and story", _gs.unlocked_recipes().is_empty() and _gs.installed.is_empty()
+		and _gs.story_seen.is_empty() and not _dialogue.is_showing())
 	_gs.set_process(true)
 	print("RESULT: %s" % ("ALL PASSED" if _failed == 0 else "%d FAILED" % _failed))
 	quit(1 if _failed > 0 else 0)

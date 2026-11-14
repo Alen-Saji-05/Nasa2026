@@ -33,7 +33,15 @@ const HAB_PLAZA := Rect2i(21, 12, 5, 5)     # sand square under the hab
 const SPAWN_TILE := Vector2i(23, 17)         # on the street, in front of the hab
 const LAUNCH_PAD_TILE := Vector2i(37, 17)
 const PAD_PLAZA := Rect2i(35, 15, 5, 5)     # sand square under the launch pad
-const ROCKET_TILE := Vector2i(10, 9)         # bottom-centre of the crashed rocket
+const ROCKET_TILE := Vector2i(8, 13)         # bottom-centre of the crashed ship
+const SHIP_HEIGHT := 128.0                   # pixels: how tall the ship is drawn
+const SHIP_AREA := Rect2i(5, 6, 7, 8)       # tiles the ship covers: kept free of rocks
+## Where each repair module's port is on the ground (tile). The engine goes on the
+## ship's tail; the other five sit next to their coloured port, joined by a pipe.
+const SHIP_SLOTS: Dictionary = {
+	"power_station": Vector2i(13, 7), "avionics": Vector2i(16, 8), "thermal": Vector2i(13, 10),
+	"life_support": Vector2i(16, 11), "propellant": Vector2i(13, 12), "engine": Vector2i(8, 13),
+}
 
 ## Top-left tile of every build pad (each pad is PAD_SIZE x PAD_SIZE tiles).
 ## The first Config.BUILD_PAD_COUNT entries are used.
@@ -60,7 +68,7 @@ const ENTRANCES: Array[Dictionary] = [
 ## Sand trails, as corner points. Each one is 1 tile wide.
 const TRAILS: Array = [
 	[Vector2i(6, 17), Vector2i(34, 17)],                                              # the main street
-	[Vector2i(12, 10), Vector2i(12, 17)],                                             # to the wreck
+	[Vector2i(12, 17), Vector2i(12, 14), Vector2i(9, 14)],                           # to the wreck
 	[Vector2i(29, 5), Vector2i(29, 17)],                                              # to the Ice Cave
 	[Vector2i(37, 14), Vector2i(37, 12), Vector2i(41, 12), Vector2i(41, 11)],         # to the Ore Cave
 	[Vector2i(20, 17), Vector2i(20, 21), Vector2i(15, 21), Vector2i(15, 28), Vector2i(20, 28), Vector2i(20, 27)],  # to the Deep Cave
@@ -121,7 +129,10 @@ const TEX_CLIFF_LEFT := preload("res://art/cliffs/cliff_left.png")
 const TEX_CLIFF_RIGHT := preload("res://art/cliffs/cliff_right.png")
 const TEX_FOOTPRINTS := preload("res://art/overlays/footprints.png")
 ## PLACEHOLDER art. Swap these files (or these paths) when the real art exists.
-const TEX_BROKEN_ROCKET := preload("res://art/placeholders/broken_rocket_placeholder.png")
+const TEX_BROKEN_ROCKET := preload("res://art/new_sprites/spaceship_components/Crashed Pixel Spaceship Sprite.png")
+const TEX_IRON := preload("res://art/new_sprites/new_ores/iron_ore.png")
+const SHIP_SCRIPT := preload("res://scripts/ship.gd")
+const SLOT_SCRIPT := preload("res://scripts/ship_slot.gd")
 const TEX_ROCKET_DEBRIS := preload("res://art/placeholders/rocket_debris_placeholder.png")
 const TEX_CAVE_MOUTH := preload("res://art/placeholders/cave_entrance_placeholder.png")
 const TEX_BUILD_PAD := preload("res://art/placeholders/build_pad_placeholder.png")
@@ -133,7 +144,6 @@ const CAVE_ENTRANCE_SCRIPT := preload("res://scripts/cave_entrance.gd")
 
 const DECOR_SCALE := Vector2(0.25, 0.25)    # rock art is drawn ~4x larger than tiles
 const NODE_SCALE := Vector2(2.0, 2.0)       # metal / ice deposits (16 px art)
-const ROCKET_SCALE := Vector2(1.5, 1.5)
 const PILLAR_SIZE := 2                       # rock pillars that fill big gaps are 2x2 tiles
 const PILLAR_MIN_GAP := 6                    # a gap this wide (tiles) gets a pillar instead of a rock
 const DIRS: Array[Vector2i] = [Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT]
@@ -164,6 +174,9 @@ func _ready() -> void:
 	_setup_camera()
 	get_viewport().size_changed.connect(_setup_camera)
 	_setup_day_night()
+	var dialogue := get_node_or_null("/root/Dialogue")
+	if dialogue != null:
+		dialogue.once("intro", true)
 
 
 ## The surface gets darker at night (GameState runs the clock).
@@ -211,7 +224,9 @@ func _on_day_night(_sol: int, sun_level: float) -> void:
 	var state := get_node("/root/GameState")
 	if sun_level < 0.5 and not state.lamp_found:
 		state.lamp_found = true
-		state.say("It is getting dark. You switch on the portable lamp you salvaged from the wreck.")
+		var dialogue := get_node_or_null("/root/Dialogue")
+		if dialogue != null:
+			dialogue.once("lamp")
 
 
 ## Coming back out of a cave: the player stands in front of that cave's entrance.
@@ -221,6 +236,12 @@ func _place_arrival() -> void:
 	if state == null or player == null:
 		return
 	var how: String = state.arrival
+	if how == "shelter_exit":
+		# Out of the Emergency Shelter: just in front of its door.
+		for p in get_tree().get_nodes_in_group("build_pads"):
+			if state.machines.get(p.get("pad_id"), "") == "shelter":
+				player.global_position = (p as Node2D).global_position + Vector2(0, 12)
+		return
 	if not how.begins_with("entrance:"):
 		return
 	var entrance := get_node_or_null("CaveEntrances/Entrance_%s" % how.trim_prefix("entrance:"))
@@ -320,6 +341,8 @@ func _build_layout(noise: FastNoiseLite) -> void:
 	for pad in build_pad_tiles():
 		fixed.append_array(_rect_tiles(Rect2i(pad, Vector2i(PAD_SIZE, PAD_SIZE))))
 	fixed.append_array(_rect_tiles(Rect2i(ROCKET_TILE.x - 2, ROCKET_TILE.y - 2, 5, 3)))
+	fixed.append_array(_rect_tiles(SHIP_AREA))
+	fixed.append_array(SHIP_SLOTS.values())
 	for e in ENTRANCES:
 		fixed.append(e.tile)
 	fixed.append_array(metal_tiles())
@@ -637,7 +660,7 @@ func _build_base(ground_decor: Node) -> void:
 	var hab := get_node_or_null("Entities/Hab") as Node2D
 	if hab != null:
 		hab.position = _tile_centre(HAB_TILE)
-		hab.set_script(preload("res://scripts/hab.gd"))   # E at the hab refines ore
+		hab.set_script(null)
 	var player := get_node_or_null("Entities/Player") as Node2D
 	if player != null:
 		player.position = _tile_centre(SPAWN_TILE)
@@ -720,21 +743,24 @@ func _build_broken_rocket() -> void:
 	entities.add_child(rocket)
 	rocket.owner = _scene_owner()
 
-	var size := TEX_BROKEN_ROCKET.get_size() * ROCKET_SCALE
+	rocket.set_script(SHIP_SCRIPT)
+	var ship_scale := SHIP_HEIGHT / TEX_BROKEN_ROCKET.get_size().y
+	var size := TEX_BROKEN_ROCKET.get_size() * ship_scale
 	var sprite := Sprite2D.new()
 	sprite.name = "Sprite2D"
 	sprite.texture = TEX_BROKEN_ROCKET
-	sprite.scale = ROCKET_SCALE
+	sprite.scale = Vector2.ONE * ship_scale
 	sprite.position = Vector2(0, -size.y * 0.5)
 	rocket.add_child(sprite)
 	sprite.owner = _scene_owner()
 
+	# Solid only at its base, so the player can walk behind the tall ship.
 	var shape := RectangleShape2D.new()
-	shape.size = Vector2(size.x * 0.9, size.y * 0.5)
+	shape.size = Vector2(size.x * 0.5, 14)
 	var collision := CollisionShape2D.new()
 	collision.name = "CollisionShape2D"
 	collision.shape = shape
-	collision.position = Vector2(0, -size.y * 0.3)
+	collision.position = Vector2(0, -9)
 	rocket.add_child(collision)
 	collision.owner = _scene_owner()
 
@@ -788,6 +814,37 @@ func _build_broken_rocket() -> void:
 	sparks.color_ramp = spark_ramp
 	rocket.add_child(sparks)
 	sparks.owner = _scene_owner()
+	_build_ship_slots(rocket, sprite)
+
+
+## The six repair ports: a dark outline of each module (ship_slot.gd), and a
+## pipe in the module's connection colour from its port on the ship.
+func _build_ship_slots(rocket: Node2D, ship_sprite: Sprite2D) -> void:
+	var entities := get_node("Entities")
+	for old in entities.get_children():
+		if old.name.begins_with("Slot_"):
+			entities.remove_child(old)
+			old.queue_free()
+	var art_centre := ship_sprite.texture.get_size() * 0.5
+	for module_id: String in SHIP_SLOTS:
+		var def := Config.machine(module_id)
+		var tex: Texture2D = load(def.idle[0])
+		var pos := _tile_centre(SHIP_SLOTS[module_id])
+		if module_id == "engine":
+			pos = rocket.position + Vector2(0, -7)      # on the tail, over the broken nozzle
+		var slot := _place_sprite(entities, "Slot_" + module_id, tex, Vector2.ONE * float(def.pixels) / tex.get_size().x,
+			pos, SLOT_SCRIPT, {"module_id": module_id})
+		if module_id == "engine":
+			slot.z_index = 1
+		if def.has("port"):
+			var port: Vector2 = rocket.position + ship_sprite.position + (def.port - art_centre) * ship_sprite.scale
+			var pipe := Line2D.new()
+			pipe.name = "Pipe_" + module_id
+			pipe.points = PackedVector2Array([port, Vector2(pos.x, port.y), pos])
+			pipe.width = 2.0
+			pipe.default_color = def.color
+			get_node("GroundDecor").add_child(pipe)
+			pipe.owner = _scene_owner()
 
 
 # ---------------------------------------------------------------------------
@@ -798,9 +855,10 @@ func _place_starter_nodes(nodes: Node, decor: Node) -> void:
 	var i := 0
 	for tile in metal_tiles():
 		i += 1
-		var s := _place_sprite(nodes, "Metal%02d" % i, TEX_METAL, NODE_SCALE, _tile_centre(tile),
-			RESOURCE_NODE_SCRIPT, {"kind": "metal", "charges_left": Config.NODE_CHARGES, "node_id": "surface/Metal%02d" % i})
-		s.set_meta("kind", "metal")
+		# Iron Ore: the first thing the player needs (the Ore Refinery is made of it).
+		var s := _place_sprite(nodes, "Iron%02d" % i, TEX_IRON, Vector2.ONE * Config.DEPOSIT_PIXELS / TEX_IRON.get_size().x,
+			_tile_centre(tile), RESOURCE_NODE_SCRIPT, {"kind": "iron", "charges_left": Config.NODE_CHARGES, "node_id": "surface/Iron%02d" % i})
+		s.set_meta("kind", "iron")
 	i = 0
 	for tile in ice_tiles():
 		i += 1
@@ -853,6 +911,9 @@ func _make_report() -> void:
 		targets["pad %d" % i] = pad
 	for e in ENTRANCES:
 		targets["%s cave entrance" % e.cave] = e.tile
+	for module_id: String in SHIP_SLOTS:
+		if module_id != "engine":
+			targets["%s port" % module_id] = SHIP_SLOTS[module_id]
 	var unreachable: Array[String] = []
 	for key: String in targets:
 		if _distance_to(targets[key]) < 0:
@@ -873,7 +934,7 @@ func _make_report() -> void:
 			unreachable_nodes += 1
 		elif d < Config.STARTER_NODE_MIN_WALK:
 			nodes_near_base += 1
-		if n.get_meta("kind", "") == "metal":
+		if n.get_meta("kind", "") != "ice":
 			metal += 1
 		else:
 			ice += 1

@@ -1,6 +1,7 @@
 extends Control
-## The HUD: oxygen bar, water bar, metal counter, a message line and a simple
-## game-over label. It only reads from GameState.
+## The HUD: health, oxygen and water bars, the inventory, a message line and a
+## simple game-over label. It reads GameState; F eats a potato. Hints (GameState.highlight)
+## make a bar glow.
 
 const O2_FRAMES: Array[Texture2D] = [
 	preload("res://art/oxgen_bar/oxygen_bar_000.png"),
@@ -28,18 +29,6 @@ const WATER_FRAMES: Array[Texture2D] = [
 	preload("res://art/water_bar/water_bar_090.png"),
 	preload("res://art/water_bar/water_bar_100.png"),
 ]
-const DIGITS: Array[Texture2D] = [
-	preload("res://art/metal_scrap_bar/digit_0.png"),
-	preload("res://art/metal_scrap_bar/digit_1.png"),
-	preload("res://art/metal_scrap_bar/digit_2.png"),
-	preload("res://art/metal_scrap_bar/digit_3.png"),
-	preload("res://art/metal_scrap_bar/digit_4.png"),
-	preload("res://art/metal_scrap_bar/digit_5.png"),
-	preload("res://art/metal_scrap_bar/digit_6.png"),
-	preload("res://art/metal_scrap_bar/digit_7.png"),
-	preload("res://art/metal_scrap_bar/digit_8.png"),
-	preload("res://art/metal_scrap_bar/digit_9.png"),
-]
 const BLINK_COLOR := Color(1.0, 0.35, 0.3)
 const MESSAGE_SECONDS := 2.5
 
@@ -47,11 +36,8 @@ const MESSAGE_SECONDS := 2.5
 @onready var oxygen_value: Label = $Bars/OxygenRow/OxygenValue
 @onready var water_bar: TextureRect = $Bars/WaterRow/WaterBar
 @onready var water_value: Label = $Bars/WaterRow/WaterValue
-@onready var metal_digits: Array[TextureRect] = [
-	$Bars/MetalRow/MetalFrame/Digits/Digit1,
-	$Bars/MetalRow/MetalFrame/Digits/Digit2,
-	$Bars/MetalRow/MetalFrame/Digits/Digit3,
-]
+@onready var health_bar: TextureRect = $Bars/HealthRow/HealthBar
+@onready var health_value: Label = $Bars/HealthRow/HealthValue
 @onready var message_label: Label = $Message
 @onready var game_over_panel: Control = $GameOver
 @onready var game_over_label: Label = $GameOver/Label
@@ -66,12 +52,16 @@ var _sol_label: Label
 func _ready() -> void:
 	# Keep working while the game is paused on the game-over screen.
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	(get_parent() as CanvasLayer).layer = 2      # above the hazard effects (hazards.gd)
 	message_label.text = ""
+	message_label.offset_top -= 110             # above the dialogue box (dialogue.gd)
+	message_label.offset_bottom -= 110
 	game_over_panel.hide()
 
 	GameState.oxygen_changed.connect(update_oxygen)
 	GameState.water_changed.connect(update_water)
-	GameState.metal_changed.connect(update_metal)
+	GameState.health_changed.connect(update_health)
+	GameState.highlight.connect(highlight)
 	GameState.message.connect(show_message)
 	GameState.game_ended.connect(_on_game_ended)
 	GameState.location_changed.connect(show_location)
@@ -80,13 +70,14 @@ func _ready() -> void:
 	GameState.inventory_changed.connect(update_inventory)
 	add_child(preload("res://scripts/build_book.gd").new())
 	update_inventory()
+	GameState.inventory_changed.connect(func() -> void: update_health(GameState.health, false))
 	_make_location_label()
 	show_location(GameState.location_name())
 	update_power()
 
 	update_oxygen(GameState.oxygen)
 	update_water(GameState.water, GameState.water_limit)
-	update_metal(GameState.metal)
+	update_health(GameState.health, false)
 
 
 func update_oxygen(value: float) -> void:
@@ -102,11 +93,48 @@ func update_water(value: float, limit: float) -> void:
 	_set_blink(water_bar, value < Config.WATER_LOW_WARNING)
 
 
-func update_metal(value: int) -> void:
-	var shown := clampi(value, 0, 999)
-	metal_digits[0].texture = DIGITS[shown / 100]
-	metal_digits[1].texture = DIGITS[(shown / 10) % 10]
-	metal_digits[2].texture = DIGITS[shown % 10]
+func update_health(value: float, hurt: bool) -> void:
+	health_bar.texture = load("res://art/new_sprites/health_bar/health_%d_of_10.png" % _frame_index(value, Config.HEALTH_MAX))
+	var potatoes := GameState.item_count("potato")
+	health_value.text = str(roundi(value)) + ("   F: eat potato (%d)" % potatoes if potatoes > 0 and value < Config.HEALTH_MAX - 1.0 else "")
+	_set_blink(health_bar, value < Config.HEALTH_LOW_WARNING)
+	if hurt:
+		var row := $Bars/HealthRow as Control
+		var shake := row.create_tween()
+		for i in 3:
+			shake.tween_property(row, "position:x", 4.0, 0.04)
+			shake.tween_property(row, "position:x", -4.0, 0.04)
+		shake.tween_property(row, "position:x", 0.0, 0.04)
+
+
+## A hint points here: the bar (or the power line) glows gold for a few seconds
+## with an arrow next to it. "book:<id>" goes to the Build Book.
+func highlight(target: String) -> void:
+	if target.begins_with("book:"):
+		($BuildBook as Node).call("highlight", target.trim_prefix("book:"))
+		return
+	var node: Control = {"health": $Bars/HealthRow, "oxygen": $Bars/OxygenRow, "water": $Bars/WaterRow,
+		"power": _power_label}.get(target)
+	if node == null:
+		return
+	var arrow := Label.new()
+	arrow.text = "<< !" if node != _power_label else "! >>"
+	arrow.add_theme_font_size_override("font_size", 20)
+	arrow.add_theme_color_override("font_color", Color(1.0, 0.85, 0.2))
+	arrow.add_theme_color_override("font_outline_color", Color(0.1, 0.05, 0.05))
+	arrow.add_theme_constant_override("outline_size", 6)
+	add_child(arrow)
+	var rect := node.get_global_rect()
+	if node != _power_label:
+		rect.end.x = node.get_child(node.get_child_count() - 1).get_global_rect().end.x
+	arrow.position = Vector2(rect.end.x + 8, rect.position.y + 4) if node != _power_label 		else Vector2(rect.position.x - 52, rect.position.y)
+	var tween := create_tween()
+	for i in 8:
+		tween.tween_property(node, "modulate", Color(1.6, 1.4, 0.5), 0.35)
+		tween.parallel().tween_property(arrow, "position:x", arrow.position.x + (6 if node != _power_label else -6), 0.35)
+		tween.tween_property(node, "modulate", Color.WHITE, 0.35)
+		tween.parallel().tween_property(arrow, "position:x", arrow.position.x, 0.35)
+	tween.tween_callback(arrow.queue_free)
 
 
 ## Where the player is ("Surface", "Ice Cave L2"), top right.
@@ -230,9 +258,11 @@ func _on_game_ended(reason: String) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not GameState.game_over:
-		return
 	var key := event as InputEventKey
+	if not GameState.game_over:
+		if key != null and key.pressed and not key.echo and key.physical_keycode == KEY_F and not get_tree().paused:
+			GameState.eat_potato()
+		return
 	if key != null and key.pressed and not key.echo and key.physical_keycode == KEY_R:
 		# Back to the title screen; it resets the game when Play is pressed.
 		GameState.reset()

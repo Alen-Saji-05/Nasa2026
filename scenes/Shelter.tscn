@@ -1,0 +1,20 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world/shelter.gd" id="1_shelter"]
+[ext_resource type="PackedScene" uid="uid://dnlf03xaufkq3" path="res://player.tscn" id="2_player"]
+[ext_resource type="Script" uid="uid://dpgfuytdcui2g" path="res://player.gd" id="3_pscript"]
+[ext_resource type="PackedScene" path="res://scenes/HUD.tscn" id="4_hud"]
+
+[node name="Shelter" type="Node2D"]
+script = ExtResource("1_shelter")
+
+[node name="Room" type="Node2D" parent="."]
+
+[node name="Entities" type="Node2D" parent="."]
+y_sort_enabled = true
+
+[node name="Player" parent="Entities" instance=ExtResource("2_player")]
+scale = Vector2(0.075, 0.075)
+script = ExtResource("3_pscript")
+
+[node name="UI" parent="." instance=ExtResource("4_hud")]

@@ -86,17 +86,43 @@ func status_text() -> String:
 			return "%s: making %.1f power" % [name_text, Config.BACKUP_OUTPUT]
 		"water_tank":
 			return "%s: water limit %d" % [name_text, roundi(GameState.water_limit)]
+		"greenhouse":
+			return "%s: growing (%d potatoes ready)" % [name_text, GameState.machine_output.get("potato", 0)]
+		"shelter":
+			return "%s: %s" % [name_text, "safe outside" if Hazards.is_safe() else "get inside!"]
+		"co2_capture":
+			if not GameState.o2_generator_powered:
+				return "%s: stopped, no power" % name_text
+			return "%s: capturing CO2 (%d capsules ready)" % [name_text, GameState.machine_output.get("co2", 0)]
 	return name_text
 
 
 # --- Used by the player's Interactor (E key) ---
 
 func interact(_player: Node2D) -> void:
-	GameState.say(status_text())
+	match Config.machine(machine_id).get("acts_as", machine_id):
+		"refinery":
+			GameState.say(GameState.use_refinery())
+		"co2_capture":
+			var got := GameState.collect_output(["co2"])
+			GameState.say("Collected " + got if got != "" else status_text())
+		"greenhouse":
+			var got := GameState.collect_output(["potato"])
+			GameState.say("Harvested " + got + " (press F to eat)" if got != "" else status_text())
+		"shelter":
+			Travel.enter_shelter()
+		_:
+			GameState.say(status_text())
 
 
 func prompt_offset() -> Vector2:
+	if machine_id == "shelter":
+		return Vector2(0, -height() * 0.12)        # on the door
 	return Vector2(0, -height() - 4)
+
+
+func prompt_text() -> String:
+	return "Press E to Enter Emergency Shelter" if machine_id == "shelter" else "E"
 
 
 # ---------------------------------------------------------------------------
@@ -115,9 +141,40 @@ func _update_look() -> void:
 			_play("idle" if GameState.game_over else "running")
 		"water_tank":
 			_show_level(GameState.water / maxf(1.0, GameState.water_limit))
+		"refinery":
+			_set_working(GameState.refinery_working())
+		"greenhouse":
+			_play("idle")
+			sprite.modulate = Color(1.15, 1.25, 1.0) if GameState.machine_output.get("potato", 0) > 0 else Color.WHITE
+		"co2_capture":
+			_set_working(GameState.co2_capture_working())
+			problem = "" if GameState.o2_generator_powered else "no power"
 		_:
 			_play("idle")
 	warning.visible = problem != ""
+
+
+## Machines with one picture: smoke from the top and a gentle hum while they work.
+func _set_working(on: bool) -> void:
+	_play("idle")
+	var smoke := get_node_or_null("Smoke") as CPUParticles2D
+	if smoke == null:
+		smoke = CPUParticles2D.new()
+		smoke.name = "Smoke"
+		smoke.position = Vector2(0, -height() * 0.9)
+		smoke.amount = 10
+		smoke.lifetime = 1.6
+		smoke.direction = Vector2(0, -1)
+		smoke.spread = 15.0
+		smoke.gravity = Vector2(4, -8)
+		smoke.initial_velocity_min = 5.0
+		smoke.initial_velocity_max = 10.0
+		smoke.scale_amount_min = 1.5
+		smoke.scale_amount_max = 3.0
+		smoke.color = Color(0.75, 0.72, 0.75, 0.6)
+		add_child(smoke)
+	smoke.emitting = on
+	sprite.position.y = sin(Time.get_ticks_msec() * 0.02) * 0.6 if on else 0.0
 
 
 func _play(anim: String) -> void:

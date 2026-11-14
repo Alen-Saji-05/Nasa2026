@@ -9,6 +9,7 @@ extends Node2D
 ## Optional methods on a target:
 ##   interact_penalty() -> float   extra distance, so it loses against other targets
 ##   prompt_offset() -> Vector2    where the "E" goes, relative to the target
+##   prompt_text() -> String       a longer tag than "E" ("Press E to Enter ...")
 
 const ACTION := "interact"
 const GROUP := "interactables"
@@ -36,6 +37,10 @@ func _process(delta: float) -> void:
 		var offset := Vector2(0, -20)
 		if _focus.has_method("prompt_offset"):
 			offset = _focus.prompt_offset()
+		var text: String = _focus.prompt_text() if _focus.has_method("prompt_text") else "E"
+		if _prompt.text != text:
+			_prompt.text = text
+			_prompt.reset_size()
 		_prompt.position = _focus.global_position + offset - _prompt.size * _prompt.scale * Vector2(0.5, 1.0)
 
 

@@ -45,6 +45,11 @@ func _physics_process(delta: float) -> void:
 		animated_sprite.stop()
 		animated_sprite.frame = 0
 
+	# Dust storms slow the player down and push them with the wind (hazards.gd).
+	var hazards := get_node_or_null("/root/Hazards")
+	if hazards != null:
+		velocity = velocity * hazards.speed_factor() + hazards.wind()
+
 	var intended := velocity
 	move_and_slide()
 	_check_bounce(intended)

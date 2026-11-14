@@ -1,5 +1,5 @@
 extends Node
-## Shared game state (autoload "GameState"): oxygen, water and metal.
+## Shared game state (autoload "GameState"): oxygen, water, health, inventory, machines.
 ##
 ## The HUD, the player and the machines only READ these values and call the
 ## methods below. Nobody keeps their own copy. All numbers live in config.gd.
@@ -20,9 +20,15 @@ signal machines_changed
 signal inventory_changed
 ## Build Book recipes were just discovered (a list of machine ids).
 signal recipes_unlocked(ids: Array)
+## A ship module was built or installed, or the wreck was salvaged.
+signal ship_changed
 ## Power made, power used or the battery changed.
 signal power_changed
 signal day_night_changed(sol: int, sun_level: float)
+## Health went up or down. `hurt` is true for damage (the HUD flashes).
+signal health_changed(value: float, hurt: bool)
+## A hint points at something: "health", "oxygen", "water", "power", "wreck" or "book:<page id>".
+signal highlight(target: String)
 
 var sol_elapsed_seconds: float = 0.0
 var sol_number: int = 1
@@ -31,6 +37,14 @@ var oxygen: float = Config.O2_START
 var water: float = Config.WATER_START
 var water_limit: float = Config.WATER_BASE_LIMIT
 var metal: int = Config.METAL_START
+
+## Health: hunger lowers it slowly, radiation and dust storms hurt. 0 = game over.
+var health: float = Config.HEALTH_MAX
+## How many potatoes the player has eaten (the hints use it).
+var meals: int = 0
+## True while the player is inside the Emergency Shelter (scenes/Shelter.tscn).
+var in_shelter: bool = false
+var _grow_time := 0.0
 
 var zero_oxygen_time: float = 0.0
 var zero_water_time: float = 0.0
@@ -62,6 +76,17 @@ var discovered: Dictionary = {}
 var new_recipes: Array[String] = []
 ## True after the first radiation event (unlocks the radiation recipes).
 var radiation_seen: bool = false
+## Ship repair: modules built in the book and waiting to be installed, and installed ones.
+var modules_ready: Array[String] = []
+var installed: Array[String] = []
+var wreck_salvaged: bool = false
+## Story lines already told (dialogue.gd).
+var story_seen: Dictionary = {}
+## Production: ore waiting in the refinery, and finished goods waiting in machines.
+var refinery_queue: Dictionary = {}
+var machine_output: Dictionary = {}          # item id -> count, collected with E
+var _refine_time := 0.0
+var _co2_time := 0.0
 ## The lamp from the wreck: switched on at the first nightfall.
 var lamp_found: bool = false
 
@@ -85,8 +110,12 @@ func _process(delta: float) -> void:
 	_update_day_night(delta)
 
 	_run_power(delta)
+	_run_production(delta)
 	_run_o2_generator(delta)
 
+	damage(Config.HUNGER_PER_SOL / Config.SOL_SECONDS * delta, false)
+	if game_over:
+		return
 	if oxygen > 0.0:
 		oxygen = maxf(0.0, oxygen - Config.O2_DRAIN_PER_SEC * delta)
 		oxygen_changed.emit(oxygen)
@@ -126,6 +155,48 @@ func add_oxygen(amount: float) -> void:
 		return
 	oxygen = minf(Config.O2_MAX, oxygen + amount)
 	oxygen_changed.emit(oxygen)
+
+
+# --- Health and food ---
+
+## Takes health. `hurt` = a real hit (radiation, storm): the HUD flashes red.
+func damage(amount: float, hurt: bool = true) -> void:
+	if game_over or amount <= 0.0:
+		return
+	health = maxf(0.0, health - amount)
+	health_changed.emit(health, hurt)
+	if health <= 0.0:
+		_end_game("Your health ran out")
+
+
+func heal(amount: float) -> void:
+	if game_over:
+		return
+	health = minf(Config.HEALTH_MAX, health + amount)
+	health_changed.emit(health, false)
+
+
+## Eats one potato (F key). Returns false if there is none or health is full.
+func eat_potato() -> bool:
+	if game_over:
+		return false
+	if item_count("potato") <= 0:
+		say("No potatoes to eat")
+		return false
+	if health >= Config.HEALTH_MAX - 1.0:
+		say("Not hungry right now")
+		return false
+	inventory["potato"] -= 1
+	inventory_changed.emit()
+	meals += 1
+	heal(Config.POTATO_HEALTH)
+	say("Ate a potato: +%d health" % roundi(Config.POTATO_HEALTH))
+	return true
+
+
+## True when the player stands outside on the surface (hazards hurt there).
+func is_outside() -> bool:
+	return cave_id == "" and not in_shelter
 
 
 # --- Water ---
@@ -196,10 +267,20 @@ func spend(metal_cost: int, water_cost: float) -> bool:
 # --- Inventory ---
 
 func add_item(item_id: String, amount: int = 1) -> void:
-	var before := unlocked_recipes()
 	inventory[item_id] = item_count(item_id) + amount
-	discovered[item_id] = true
 	inventory_changed.emit()
+	discover(item_id)
+
+
+## Marks a material as found: story line the first time, and recipes that use it unlock.
+func discover(item_id: String) -> void:
+	if discovered.has(item_id):
+		return
+	var before := unlocked_recipes()
+	discovered[item_id] = true
+	var dialogue := get_node_or_null("/root/Dialogue") if is_inside_tree() else null
+	if dialogue != null:
+		dialogue.once("found_" + item_id)
 	_announce_unlocks(before)
 
 
@@ -232,6 +313,9 @@ func unlocked_recipes() -> Array:
 func see_radiation() -> void:
 	var before := unlocked_recipes()
 	radiation_seen = true
+	var dialogue := get_node_or_null("/root/Dialogue")
+	if dialogue != null:
+		dialogue.once("radiation", true)
 	_announce_unlocks(before)
 
 
@@ -242,9 +326,115 @@ func _announce_unlocks(before: Array) -> void:
 		recipes_unlocked.emit(fresh)
 
 
-## True when all six ship systems are built.
+## True when all six ship modules are installed.
 func ship_repaired() -> bool:
-	return Config.REPAIR_ORDER.all(has_built)
+	return Config.REPAIR_ORDER.all(func(id: String) -> bool: return installed.has(id))
+
+
+## Puts a built module into its port on the ship. The sixth one wins the game.
+func install(module_id: String) -> void:
+	if not modules_ready.has(module_id):
+		return
+	modules_ready.erase(module_id)
+	installed.append(module_id)
+	ship_changed.emit()
+	var dialogue := get_node_or_null("/root/Dialogue")
+	if dialogue != null:
+		dialogue.once("installed_" + module_id, true)
+		dialogue.say("Ship repair: %d / %d systems installed." % [installed.size(), Config.REPAIR_ORDER.size()])
+		if installed.size() == Config.REPAIR_ORDER.size() / 2:
+			dialogue.once("half_repaired", true)
+	if ship_repaired():
+		if dialogue != null:
+			dialogue.once("repaired", true)
+		win("All six ship systems are repaired. You launch for home!")
+
+
+## Once: the emergency power cell (more storage, full) and the seed potatoes.
+func salvage_wreck() -> void:
+	if wreck_salvaged:
+		return
+	wreck_salvaged = true
+	battery_charge = battery_capacity()
+	add_item("potato", Config.WRECK_POTATOES)
+	power_changed.emit()
+	ship_changed.emit()
+
+
+# --- Production: the refinery and the CO2 capture machine ---
+
+## Loads all carried ore into the refinery and collects what is finished.
+## Returns a line for the player.
+func use_refinery() -> String:
+	var loaded := 0
+	for ore: String in Config.REFINE:
+		var n := item_count(ore)
+		if n > 0:
+			inventory[ore] = 0
+			refinery_queue[ore] = refinery_queue.get(ore, 0) + n
+			loaded += n
+	if loaded > 0:
+		inventory_changed.emit()
+	var got := collect_output(Config.REFINE.values())
+	var parts: Array[String] = []
+	if got != "":
+		parts.append("Collected " + got)
+	if loaded > 0:
+		parts.append("Loaded %d ore" % loaded)
+	if parts.is_empty():
+		return "Ore Refinery: empty. Bring Iron Ore, Aluminum Ore or Sulfur."
+	return ". ".join(parts) + (" (%d still refining)" % refinery_left() if refinery_left() > 0 else "")
+
+
+func refinery_left() -> int:
+	var n := 0
+	for ore: String in refinery_queue:
+		n += refinery_queue[ore]
+	return n
+
+
+## Moves finished goods of these item ids from the machines into the inventory.
+## Returns "3 Iron Ingots, 1 ..." or "".
+func collect_output(ids: Array) -> String:
+	var parts: Array[String] = []
+	for id: String in ids:
+		var n: int = machine_output.get(id, 0)
+		if n > 0:
+			machine_output[id] = 0
+			add_item(id, n)
+			parts.append("%d %s" % [n, Config.item(id).name])
+	return ", ".join(parts)
+
+
+func refinery_working() -> bool:
+	return machine_count("refinery") > 0 and refinery_left() > 0 and o2_generator_powered
+
+
+func co2_capture_working() -> bool:
+	return machine_count("co2_capture") > 0 and o2_generator_powered
+
+
+func _run_production(delta: float) -> void:
+	if refinery_working():
+		_refine_time += delta
+		while _refine_time >= Config.REFINE_SECONDS and refinery_left() > 0:
+			_refine_time -= Config.REFINE_SECONDS
+			for ore: String in Config.REFINE:
+				if refinery_queue.get(ore, 0) > 0:
+					refinery_queue[ore] -= 1
+					var made: String = Config.REFINE[ore]
+					machine_output[made] = machine_output.get(made, 0) + 1
+					break
+	if machine_count("greenhouse") > 0:
+		_grow_time += delta
+		while _grow_time >= Config.GREENHOUSE_SECONDS:
+			_grow_time -= Config.GREENHOUSE_SECONDS
+			machine_output["potato"] = machine_output.get("potato", 0) + 1
+	if co2_capture_working():
+		_co2_time += delta
+		while _co2_time >= Config.CO2_CAPTURE_SECONDS:
+			_co2_time -= Config.CO2_CAPTURE_SECONDS
+			machine_output["co2"] = machine_output.get("co2", 0) + 1
 
 
 ## True if the inventory holds everything in `cost` (item id -> amount).
@@ -302,7 +492,7 @@ func add_machine(pad_id: String, machine_id: String) -> void:
 	machines_changed.emit()
 
 
-## Counts machines of this id, and machines that act as it (a Power Station is a solar panel).
+## Counts machines of this id, and machines that act as it (see "acts_as" in Config.MACHINES).
 func machine_count(machine_id: String) -> int:
 	var count := 0
 	for built: String in machines.values():
@@ -311,12 +501,14 @@ func machine_count(machine_id: String) -> int:
 	return count
 
 
+## Built on a pad, or (ship modules) built in the book or installed.
 func has_built(machine_id: String) -> bool:
-	return machine_count(machine_id) > 0
+	return machine_count(machine_id) > 0 or modules_ready.has(machine_id) or installed.has(machine_id)
 
 
 func battery_capacity() -> float:
-	return Config.HAB_BATTERY_CAPACITY + machine_count("battery") * Config.BATTERY_CAPACITY_BONUS
+	return Config.HAB_BATTERY_CAPACITY + machine_count("battery") * Config.BATTERY_CAPACITY_BONUS \
+		+ (Config.POWER_CELL_BONUS if wreck_salvaged else 0.0)
 
 
 ## True while the O2 generator really makes oxygen (wants to run, has power and water).
@@ -339,9 +531,15 @@ func o2_generator_problem() -> String:
 ## Spare power fills the battery; missing power comes out of it. When the battery
 ## is empty and there is not enough power, the O2 generator stops.
 func _run_power(delta: float) -> void:
-	power_made = machine_count("solar") * Config.SOLAR_OUTPUT * sun + machine_count("backup_power") * Config.BACKUP_OUTPUT
+	var hazards := get_node_or_null("/root/Hazards") if is_inside_tree() else null
+	var light: float = sun * (hazards.solar_factor() if hazards != null else 1.0)
+	power_made = machine_count("solar") * Config.SOLAR_OUTPUT * light + machine_count("backup_power") * Config.BACKUP_OUTPUT
 	var wants := o2_generator_built and o2_generator_running and water > 0.0
 	var need := Config.O2_GEN_POWER_USE if wants else 0.0
+	if machine_count("refinery") > 0 and refinery_left() > 0:
+		need += Config.REFINERY_POWER_USE
+	if machine_count("co2_capture") > 0:
+		need += Config.CO2_POWER_USE
 	var capacity := battery_capacity()
 	# After running dry, wait for a little charge before starting again (no flicker).
 	var reserve := 0.0 if o2_generator_powered else 1.0
@@ -377,11 +575,14 @@ func set_location(cave: String, layer: int, how: String) -> void:
 	cave_id = cave
 	cave_layer = layer
 	arrival = how
+	in_shelter = how == "shelter"
 	location_changed.emit(location_name())
 
 
 ## "Surface", or the cave and layer: "Ice Cave L2".
 func location_name() -> String:
+	if in_shelter:
+		return "Emergency Shelter"
 	if cave_id == "":
 		return "Surface"
 	return "%s L%d" % [Config.cave_name(cave_id), cave_layer + 1]
@@ -395,6 +596,10 @@ func reset() -> void:
 	metal = Config.METAL_START
 	zero_oxygen_time = 0.0
 	zero_water_time = 0.0
+	health = Config.HEALTH_MAX
+	meals = 0
+	in_shelter = false
+	_grow_time = 0.0
 	game_over = false
 	game_over_reason = ""
 	o2_generator_built = false
@@ -407,6 +612,20 @@ func reset() -> void:
 	inventory.clear()
 	discovered.clear()
 	new_recipes.clear()
+	modules_ready.clear()
+	installed.clear()
+	wreck_salvaged = false
+	story_seen.clear()
+	refinery_queue.clear()
+	machine_output.clear()
+	_refine_time = 0.0
+	_co2_time = 0.0
+	var dialogue := (get_node_or_null("/root/Dialogue") if is_inside_tree() else null)
+	if dialogue != null:
+		dialogue.clear()
+	var hazards := (get_node_or_null("/root/Hazards") if is_inside_tree() else null)
+	if hazards != null:
+		hazards.reset()
 	radiation_seen = false
 	lamp_found = false
 	inventory_changed.emit()
@@ -421,9 +640,11 @@ func reset() -> void:
 	oxygen_changed.emit(oxygen)
 	water_changed.emit(water, water_limit)
 	metal_changed.emit(metal)
+	health_changed.emit(health, false)
 	location_changed.emit(location_name())
 	machines_changed.emit()
 	power_changed.emit()
+	ship_changed.emit()
 
 
 func _end_game(reason: String) -> void:

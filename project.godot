@@ -20,6 +20,9 @@ config/icon="res://icon.svg"
 GameState="*uid://d2cvfgysg3igm"
 Travel="*res://scripts/travel.gd"
 Builder="*res://scripts/builder.gd"
+Dialogue="*res://scripts/dialogue.gd"
+Hazards="*res://scripts/hazards.gd"
+Guide="*res://scripts/guide.gd"
 
 [display]
 

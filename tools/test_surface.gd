@@ -88,8 +88,8 @@ func _run() -> void:
 	_check("at night the surface is darker (%.2f) but still readable" % tint.color.get_luminance(),
 		tint.color.get_luminance() < 0.6 and tint.color.get_luminance() > 0.3)
 	var lamp := player.get_node("Lamp") as PointLight2D
-	_check("at night the lamp glows around the player, and its story was told once %s" % str(_messages),
-		lamp.energy > 0.5 and _gs.lamp_found and _messages.filter(func(m: String) -> bool: return m.contains("lamp")).size() == 1)
+	_check("at night the lamp glows around the player, and its story was told",
+		lamp.energy > 0.5 and _gs.lamp_found and _gs.story_seen.has("lamp"))
 	player.global_position = world.get_node("Entities/Hab").global_position + Vector2(0, 50)
 
 	# --- the inventory on the HUD ---

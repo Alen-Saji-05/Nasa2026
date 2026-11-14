@@ -5,8 +5,7 @@ extends Node
 ##   E on a lit pad, or a click on it  -> pays, builds, done
 ##   Esc or a right click              -> cancel
 ##
-## The book (Phase 4) calls start_placing(). Until then the debug keys 1-6 do
-## (see Config.DEBUG_KEYS).
+## The Build Book calls start_placing() for machines and craft() for items and ship modules.
 
 ## Emitted when placing starts or stops. `machine_id` is "" when it stops.
 signal placing_changed(machine_id: String)
@@ -28,13 +27,18 @@ func build_problem(machine_id: String) -> String:
 		return "Unknown machine"
 	if GameState.game_over:
 		return "The game is over"
-	if GameState.cave_id != "":
+	var kind: String = def.get("kind", "machine")
+	if kind == "machine" and GameState.cave_id != "":
 		return "Machines are built at the base"
-	if def.get("unique", false) and GameState.has_built(machine_id):
+	if (def.get("unique", false) or kind == "module") and GameState.has_built(machine_id):
 		return "Already built"
+	if def.has("requires") and not GameState.has_built(def.requires):
+		return "Needs a %s first" % Config.machine(def.requires).name
 	var cost := GameState.cost_problem(machine_id)
 	if cost != "":
 		return cost
+	if kind != "machine":
+		return ""
 	if _pads().filter(func(p: Node) -> bool: return p.fits(machine_id)).is_empty():
 		return "No free launch pad" if def.pad == "launch" else "No free build pad"
 	return ""
@@ -80,11 +84,27 @@ func place_on(pad: Node) -> Node:
 	var m: Node = pad.spawn_machine(machine_id)
 	GameState.say("%s built!" % def.name if first else "Another %s built" % def.name)
 	built.emit(machine_id, pad.pad_id)
-	if machine_id == "ascent":
-		m.launch()
-	elif GameState.ship_repaired():
-		GameState.win("All six ship systems are repaired. You launch for home!")
+	Dialogue.once("built_" + machine_id)
 	return m
+
+
+## Crafts an item or a ship module from the book (no pad). Returns true if done.
+func craft(machine_id: String) -> bool:
+	var problem := build_problem(machine_id)
+	var def := Config.machine(machine_id)
+	if problem != "" or not GameState.spend_items(def.cost):
+		GameState.say(problem if problem != "" else GameState.cost_problem(machine_id))
+		return false
+	if def.kind == "module":
+		GameState.modules_ready.append(machine_id)
+		GameState.ship_changed.emit()
+		GameState.say("%s built. Install it at its port on the ship (E)." % def.name)
+		Dialogue.once("crafted_module")
+	else:
+		GameState.add_item(machine_id, 1)
+		GameState.say("Crafted 1 %s" % def.name)
+	built.emit(machine_id, "")
+	return true
 
 
 func _pads() -> Array[Node]:
@@ -127,18 +147,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if not Config.DEBUG_KEYS or key == null or not key.pressed or key.echo or get_tree().paused:
 		return
-	var number := key.physical_keycode - KEY_1
-	if number >= 0 and number < Config.MACHINE_ORDER.size():
-		start_placing(Config.MACHINE_ORDER[number])
-	elif key.physical_keycode == KEY_F1:
-		GameState.add_metal(50)
-		GameState.add_water(50.0)
-		for id: String in ["iron_ingot", "aluminum_ingot", "sulfur_compound", "methane", "oxygen", "potato", "electronics"]:
+	if key.physical_keycode == KEY_F1:
+		for id: String in Config.ITEM_ORDER:
 			GameState.add_item(id, 10)
-		GameState.say("Debug: +50 metal, +50 water, +10 of every material")
+		GameState.add_water(30.0)
+		GameState.say("Debug: +10 of every material")
 	elif key.physical_keycode == KEY_F3:
-		GameState.see_radiation()
-		GameState.say("Debug: first radiation event seen")
+		Hazards.trigger("radiation")
+	elif key.physical_keycode == KEY_F4:
+		Hazards.trigger("storm")
 	elif key.physical_keycode == KEY_F2:
 		GameState.sol_elapsed_seconds += Config.SOL_SECONDS * 0.5
 		GameState.say("Debug: half a sol later")

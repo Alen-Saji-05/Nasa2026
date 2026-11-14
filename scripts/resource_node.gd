@@ -66,6 +66,7 @@ func harvest() -> String:
 			GameState.say("Water full, build a tank")
 			return ""
 		var added: float = GameState.add_water(Config.WATER_PER_HARVEST)
+		GameState.discover("water")
 		text = "+%s water" % _short_number(added)
 	elif Config.ITEMS.has(kind):
 		var def := Config.item(kind)

@@ -38,6 +38,35 @@ const SOLAR_OUTPUT := 3.0                    # power per second from one panel i
 const BACKUP_OUTPUT := 2.0                   # power per second from Backup power, day and night
 const O2_GEN_POWER_USE := 1.0                # power per second while the O2 generator runs
 
+# --- Health and food ---
+const HEALTH_MAX := 100.0
+const HUNGER_PER_SOL := 24.0                 # health lost to hunger every sol (100 lasts about 4 sols)
+const POTATO_HEALTH := 30.0                  # eating one potato (F) gives back this much health
+const HEALTH_LOW_WARNING := 30.0             # HUD bar blinks red below this
+const HUNGER_HINT_1 := 60.0                  # first "I'm hungry" hint below this health
+const HUNGER_HINT_2 := 75.0                  # after eating once: "I need a way to grow food"
+const GREENHOUSE_SECONDS := 30.0             # the greenhouse grows one potato this often
+
+# --- Environmental hazards (hazards.gd). Times in seconds of game time ---
+const RADIATION_FIRST := 200.0               # the first warning (sol 4)
+const RADIATION_EVERY := Vector2(220.0, 320.0)   # then again after a random time in this range
+const RADIATION_WARNING := 12.0              # warning before it hits
+const RADIATION_WARNING_SENSOR := 30.0       # ... with a Radiation Sensor Station built
+const RADIATION_DURATION := 30.0
+const RADIATION_DAMAGE := 3.0                # health lost every HAZARD_DAMAGE_EVERY when outside
+const STORM_FIRST := 420.0                   # the first dust storm warning (sol 8)
+const STORM_EVERY := Vector2(260.0, 380.0)
+const STORM_WARNING := 10.0
+const STORM_APPROACH := 12.0                 # dust and wind build up
+const STORM_DURATION := 40.0                 # full strength
+const STORM_CLEAR := 12.0                    # dust settles again
+const STORM_DAMAGE := 2.0                    # health lost every HAZARD_DAMAGE_EVERY outside at full strength
+const STORM_SLOW := 0.45                     # share of walking speed lost at full strength
+const STORM_WIND := 30.0                     # px/s the wind pushes the player at full strength
+const STORM_SOLAR_LOSS := 0.8                # share of solar power lost at full strength
+const HAZARD_DAMAGE_EVERY := 2.0
+const SHELTER_SCENE := "res://scenes/Shelter.tscn"
+
 # --- Water ---
 const WATER_START := 50.0
 const WATER_BASE_LIMIT := 60.0
@@ -59,7 +88,7 @@ const NODE_CHARGES := 5                      # uses per metal / ice node
 const HARVEST_COOLDOWN := 0.4                # seconds between two harvests
 
 # --- Map rewards (whole game: surface + all caves) ---
-const METAL_NODE_COUNT := 12                 # 12 x 5 uses x 8 = 480 metal in the game
+const METAL_NODE_COUNT := 15                 # surface iron + every ore deposit in the caves
 const ICE_NODE_COUNT := 6
 const MAX_NODES_PER_CHAMBER := 3             # used by the cave generator
 const MIN_REWARD_DISTANCE := 0.4             # nearest deposit >= this share of the farthest walk (caves)
@@ -103,8 +132,8 @@ const CAVES: Array[Dictionary] = [
 	{
 		"id": "ore", "name": "Ore Cave", "seed": 202, "theme": "ore", "tint": Color(1.0, 0.86, 0.72),
 		"layers": [
-			{"cols": 5, "rows": 4, "ores": ["iron", "aluminum"], "metal": 2, "ice": 0, "guarded": 0, "crater_chance": 0.25, "loops": 1},
-			{"cols": 6, "rows": 4, "ores": ["iron", "aluminum", "sulfur"], "metal": 3, "ice": 0, "guarded": 1, "crater_chance": 0.35, "loops": 1},
+			{"cols": 5, "rows": 4, "ores": ["iron", "aluminum", "electronics"], "metal": 3, "ice": 0, "guarded": 0, "crater_chance": 0.25, "loops": 1},
+			{"cols": 6, "rows": 4, "ores": ["iron", "aluminum", "sulfur", "iron"], "metal": 4, "ice": 0, "guarded": 1, "crater_chance": 0.35, "loops": 1},
 		],
 	},
 	{
@@ -112,7 +141,7 @@ const CAVES: Array[Dictionary] = [
 		"layers": [
 			{"cols": 5, "rows": 4, "ores": ["sulfur"], "metal": 1, "ice": 0, "guarded": 0, "crater_chance": 0.35, "loops": 1},
 			{"cols": 6, "rows": 4, "ores": ["aluminum"], "metal": 1, "ice": 1, "guarded": 1, "crater_chance": 0.45, "loops": 2},
-			{"cols": 6, "rows": 5, "ores": ["aluminum", "electronics"], "metal": 2, "ice": 0, "guarded": 2, "crater_chance": 0.5, "loops": 2},
+			{"cols": 6, "rows": 5, "ores": ["aluminum", "aluminum", "electronics"], "metal": 3, "ice": 0, "guarded": 2, "crater_chance": 0.5, "loops": 2},
 		],
 	},
 ]
@@ -134,140 +163,139 @@ static func cave_name(cave_id: String) -> String:
 
 # --- Machines (built on the base pads; GAME_FLOW Part 7) ---
 const MACHINE_SCENE := "res://scenes/Machine.tscn"
+const NS := "res://art/new_sprites/"
 const PH := "res://art/placeholders/machines/"   # PLACEHOLDER art; swap the paths when real art exists
 ## The order machines are listed in (debug keys 1-6, and the book later).
-const MACHINE_ORDER: Array[String] = ["solar", "battery", "o2_generator", "backup_power", "water_tank", "ascent"]
-## Every machine. Art: "idle" and "running" are animations; "levels" are frames
-## picked by how full something is (battery charge, water). "scale" sizes the art.
-## "nasa" is the real-world link shown in the book. Facts marked (verify) must be
-## checked before the submission, like in GAME_FLOW.md.
+## Every buildable thing in the Build Book. "kind":
+##   "machine"  built on a base pad (Builder.start_placing)
+##   "item"     crafted into the inventory at once (Builder.craft)
+##   "module"   a ship repair module: crafted, then installed at its port on the ship
+## "cost" is paid in ITEMS ("water" = the water bar). "requires": a machine that must
+## be built first. "acts_as": which behaviour a machine has (machine.gd, GameState).
+## "unique": only one. "needs_radiation": locked until the first radiation event.
+## "pixels": how wide it is drawn. Modules: "port" (pixel on the crashed ship art
+## where its pipe connects) and "color" (connection colour, master prompt 12).
 const MACHINES: Dictionary = {
+	# ---- 1. Processing: the first thing the player can build, from raw ore ----
+	"ore_refinery": {
+		"name": "Ore Refinery", "kind": "machine", "pad": "machine", "pixels": 90, "unique": true, "acts_as": "refinery",
+		"cost": {"iron": 4, "aluminum": 4},
+		"idle": [NS + "machines/ore_refinery.png"],
+		"description": "Smelts ore into ingots and sulfur into compounds, slowly, using power. Press E to load ore and collect.",
+	},
+	"wire": {
+		"name": "Wire", "kind": "item", "cost": {"iron_ingot": 1},
+		"idle": [NS + "research_sites/06_broken_cable_bundle.png"],
+		"description": "Drawn from one iron ingot. Batteries and air scrubbers need wiring.",
+	},
+	# ---- 2. Power ----
 	"solar": {
-		"name": "Solar Panel", "metal": 15, "water": 0, "pad": "machine", "scale": 0.19,
+		"name": "Solar Panel", "kind": "machine", "pad": "machine", "pixels": 60,
+		"cost": {"iron_ingot": 2, "aluminum_ingot": 3},
 		"idle": ["res://art/solar_panel/solar_panel_generate_01.png"],
 		"running": ["res://art/solar_panel/solar_panel_generate_02.png", "res://art/solar_panel/solar_panel_generate_03.png",
 			"res://art/solar_panel/solar_panel_generate_04.png", "res://art/solar_panel/solar_panel_generate_05.png"],
-		"description": "Makes power from sunlight. Nothing at night, very little in a dust storm.",
-		"how": "+3 power per second in full sun.",
-		"nasa": "The rovers Spirit and Opportunity ran on solar panels; dust on the panels ended Opportunity in 2018 (verify).",
+		"description": "Makes power from sunlight: +3 per second by day, nothing at night.",
 	},
 	"battery": {
-		"name": "Battery", "metal": 10, "water": 0, "pad": "machine", "scale": 0.135,
+		"name": "Battery", "kind": "machine", "pad": "machine", "pixels": 50,
+		"cost": {"iron_ingot": 1, "aluminum_ingot": 2, "wire": 1},
 		"levels": ["res://art/battery/battery_empty.png", "res://art/battery/battery_low_25.png",
 			"res://art/battery/battery_medium_50.png", "res://art/battery/battery_full_100.png"],
-		"description": "Stores spare power for the night.",
-		"how": "+40 power storage.",
-		"nasa": "Mars rovers store energy in rechargeable lithium-ion batteries (verify).",
+		"description": "Stores spare solar power for the night (+40 storage).",
 	},
-	"o2_generator": {
-		"name": "Oxygen Generator", "metal": 25, "water": 0, "pad": "machine", "scale": 1.0,
-		"idle": [PH + "o2_generator_idle.png"],
-		"running": [PH + "o2_generator_run1.png", PH + "o2_generator_run2.png"],
-		"description": "Makes oxygen using power and a little water. Starts by itself when oxygen is below 95.",
-		"how": "+0.45 oxygen per second, uses 1 power and 0.15 water per second.",
-		"nasa": "MOXIE on the Perseverance rover made oxygen from the Martian air (verify).",
-	},
-	"backup_power": {
-		"name": "Backup Power", "metal": 60, "water": 0, "pad": "machine", "scale": 1.0,
-		"idle": [PH + "backup_power_idle.png"],
-		"running": [PH + "backup_power_run1.png", PH + "backup_power_run2.png"],
-		"description": "Makes power all the time, even at night and in a dust storm.",
-		"how": "+2 power per second, always.",
-		"nasa": "Curiosity and Perseverance use a radioisotope power system that works without sunlight (verify).",
-	},
-	"water_tank": {
-		"name": "Water Tank", "metal": WATER_TANK_METAL_COST, "water": 0, "pad": "machine", "scale": 1.0,
-		"levels": [PH + "water_tank_empty.png", PH + "water_tank_low.png", PH + "water_tank_medium.png", PH + "water_tank_full.png"],
-		"description": "Stores more water, so you can carry more ice home.",
-		"how": "+40 water limit.",
-		"nasa": "There is water ice under the Martian ground; future crews plan to use it (verify).",
-	},
-	"ascent": {
-		"name": "Ascent Vehicle", "metal": 80, "water": 40, "pad": "launch", "scale": 1.0,
-		"idle": [PH + "ascent_vehicle_idle.png"],
-		"running": [PH + "ascent_vehicle_run1.png", PH + "ascent_vehicle_run2.png"],
-		"description": "The rocket home. Build it on the launch pad to launch.",
-		"how": "Launches right away. You win.",
-		"nasa": "NASA has studied a Mars Ascent Vehicle to lift samples off Mars (verify).",
-	},
-	# --- The Build Book machines. "cost" is paid in items (ITEMS). "acts_as" gives a
-	# machine the behaviour of an older one. "pixels" is how wide it is drawn.
-	# "unique": only one can be built. "needs_radiation": locked until the first radiation event.
-	"power_station": {
-		"name": "Power Station", "pad": "machine", "scale": 0.19, "acts_as": "solar", "unique": true,
-		"cost": {"iron_ingot": 3, "aluminum_ingot": 5, "sulfur_compound": 2},
-		"idle": ["res://art/solar_panel/solar_panel_generate_01.png"],
-		"running": ["res://art/solar_panel/solar_panel_generate_02.png", "res://art/solar_panel/solar_panel_generate_03.png",
-			"res://art/solar_panel/solar_panel_generate_04.png", "res://art/solar_panel/solar_panel_generate_05.png"],
-		"description": "Generates electricity for repair systems.",
-	},
-	"propellant": {
-		"name": "Propellant & Pressurization Module", "pad": "machine", "pixels": 90, "unique": true,
-		"cost": {"iron_ingot": 3, "aluminum_ingot": 4, "methane": 3, "oxygen": 3},
-		"idle": ["res://art/new_sprites/spaceship_components/Propellant_Synthesizer.png"],
-		"description": "Stores and supplies rocket propellant.",
-	},
-	"engine": {
-		"name": "Engine & Thrusters", "pad": "launch", "pixels": 90, "unique": true,
-		"cost": {"iron_ingot": 6, "aluminum_ingot": 4, "sulfur_compound": 2},
-		"idle": ["res://art/new_sprites/spaceship_components/engine_thrusters_simple_transparent.png"],
-		"description": "Restores rocket propulsion.",
-	},
-	"avionics": {
-		"name": "Avionics & Communications Console", "pad": "machine", "pixels": 90, "unique": true,
-		"cost": {"iron_ingot": 2, "aluminum_ingot": 4, "sulfur_compound": 2, "electronics": 1},
-		"idle": ["res://art/new_sprites/spaceship_components/Satellite_Communications_Console.png"],
-		"description": "Restores navigation and communication.",
-	},
-	"thermal": {
-		"name": "Thermal Control", "pad": "machine", "pixels": 90, "unique": true,
-		"cost": {"iron_ingot": 2, "aluminum_ingot": 5, "sulfur_compound": 2},
-		"idle": ["res://art/new_sprites/spaceship_components/thermal_control_transparent.png"],
-		"description": "Restores temperature regulation.",
-	},
-	"life_support": {
-		"name": "Life Support Refill Station", "pad": "machine", "pixels": 90, "unique": true,
-		"cost": {"iron_ingot": 2, "aluminum_ingot": 3, "oxygen": 4, "water": 3},
-		"idle": ["res://art/new_sprites/spaceship_components/life_Support_Refill_Station.png"],
-		"description": "Refills oxygen and water.",
-	},
-	"greenhouse": {
-		"name": "Greenhouse", "pad": "machine", "pixels": 90, "unique": true,
-		"cost": {"iron_ingot": 3, "aluminum_ingot": 5, "sulfur_compound": 2, "potato": 2},
-		"idle": ["res://art/new_sprites/machines/greenhouse.png"],
-		"description": "Grows potatoes.",
-	},
-	"reservoir": {
-		"name": "Water Reservoir Tank", "pad": "machine", "pixels": 90, "acts_as": "water_tank", "unique": true,
-		"cost": {"iron_ingot": 3, "aluminum_ingot": 4, "sulfur_compound": 2},
-		"idle": ["res://art/new_sprites/machines/Water_Reservoir_Tank.png"],
-		"description": "Stores collected water.",
-	},
+	# ---- 3. Survival ----
 	"oxygen_gen": {
-		"name": "Oxygen Generator", "pad": "machine", "pixels": 90, "acts_as": "o2_generator", "unique": true,
+		"name": "Oxygen Generator", "kind": "machine", "pad": "machine", "pixels": 90, "acts_as": "o2_generator", "unique": true,
 		"cost": {"iron_ingot": 3, "aluminum_ingot": 4, "electronics": 1},
-		"idle": ["res://art/new_sprites/machines/Oxygen_Generator.png"],
+		"idle": [NS + "machines/Oxygen_Generator.png"],
 		"description": "Generates oxygen.",
 	},
+	"reservoir": {
+		"name": "Water Reservoir Tank", "kind": "machine", "pad": "machine", "pixels": 90, "acts_as": "water_tank", "unique": true,
+		"cost": {"iron_ingot": 3, "aluminum_ingot": 4, "sulfur_compound": 2},
+		"idle": [NS + "machines/Water_Reservoir_Tank.png"],
+		"description": "Stores collected water.",
+	},
+	"greenhouse": {
+		"name": "Greenhouse", "kind": "machine", "pad": "machine", "pixels": 90, "unique": true,
+		"cost": {"iron_ingot": 3, "aluminum_ingot": 5, "sulfur_compound": 2, "potato": 2},
+		"idle": [NS + "machines/greenhouse.png"],
+		"description": "Grows potatoes to eat. Plant 2 seed potatoes.",
+	},
+	# ---- 4. Propellant chemistry ----
+	"co2_capture": {
+		"name": "CO2 Capture Machine", "kind": "machine", "pad": "machine", "pixels": 90, "acts_as": "co2_capture", "unique": true,
+		"cost": {"aluminum_ingot": 3, "iron_ingot": 2, "electronics": 1, "wire": 1},
+		"idle": [NS + "machines/CO2_Capture_Machine.png"],
+		"description": "Direct air capture: pulls CO2 out of the air using power. Press E to collect the capsules.",
+	},
+	"oxygen": {
+		"name": "Oxygen Capsule", "kind": "item", "requires": "oxygen_gen", "cost": {"water": 2},
+		"idle": [NS + "new_ores/oxygen_capsule.png"],
+		"description": "Electrolysis: the Oxygen Generator splits water and bottles the oxygen.",
+	},
+	"methane": {
+		"name": "Methane Capsule", "kind": "item", "requires": "co2_capture", "cost": {"co2": 1, "water": 2},
+		"idle": [NS + "new_ores/methane_capsule.png"],
+		"description": "Sabatier process: CO2 plus hydrogen from water makes methane rocket fuel.",
+	},
+	# ---- 5. Radiation (after the first radiation event) ----
 	"radiation_sensor": {
-		"name": "Radiation Sensor Station", "pad": "machine", "pixels": 90, "unique": true, "needs_radiation": true,
+		"name": "Radiation Sensor Station", "kind": "machine", "pad": "machine", "pixels": 90, "unique": true, "needs_radiation": true,
 		"cost": {"iron_ingot": 2, "aluminum_ingot": 2, "electronics": 1},
-		"idle": ["res://art/new_sprites/machines/Radiation_Sensor_Station.png"],
+		"idle": [NS + "machines/Radiation_Sensor_Station.png"],
 		"description": "Monitors radiation.",
 	},
 	"shelter": {
-		"name": "Radiation Protection Shelter", "pad": "machine", "pixels": 90, "unique": true, "needs_radiation": true,
+		"name": "Emergency Shelter", "kind": "machine", "pad": "machine", "pixels": 100, "acts_as": "shelter", "unique": true, "needs_radiation": true,
 		"cost": {"iron_ingot": 6, "aluminum_ingot": 5, "sulfur_compound": 3},
-		"idle": ["res://art/new_sprites/machines/radioactive_protection_shelter.png"],
-		"description": "Protects against radiation.",
+		"idle": [NS + "machines/radioactive_protection_shelter.png"],
+		"description": "Walk-in shelter. Protects you from radiation and dust storms.",
+	},
+	# ---- 6. The six ship repair modules ----
+	"power_station": {
+		"name": "Solar Panel", "kind": "module", "pixels": 48, "port": Vector2(746, 465), "color": Color(1.0, 0.85, 0.2),
+		"cost": {"iron_ingot": 3, "aluminum_ingot": 5, "sulfur_compound": 2},
+		"idle": ["res://art/solar_panel/solar_panel_generate_01.png"],
+		"description": "Generates electricity for repair systems.",
+	},
+	"engine": {
+		"name": "Engine & Thrusters", "kind": "module", "pixels": 46,
+		"cost": {"iron_ingot": 6, "aluminum_ingot": 4, "sulfur_compound": 2},
+		"idle": [NS + "spaceship_components/engine_thrusters_simple_transparent.png"],
+		"description": "Restores rocket propulsion.",
+	},
+	"thermal": {
+		"name": "Thermal Control", "kind": "module", "pixels": 54, "port": Vector2(780, 739), "color": Color(0.25, 0.55, 1.0),
+		"cost": {"iron_ingot": 2, "aluminum_ingot": 5, "sulfur_compound": 2},
+		"idle": [NS + "spaceship_components/thermal_control_transparent.png"],
+		"description": "Restores temperature regulation.",
+	},
+	"avionics": {
+		"name": "Avionics & Communications Console", "kind": "module", "pixels": 50, "port": Vector2(764, 585), "color": Color(0.85, 0.85, 0.88),
+		"cost": {"iron_ingot": 2, "aluminum_ingot": 4, "sulfur_compound": 2, "electronics": 1},
+		"idle": [NS + "spaceship_components/Satellite_Communications_Console.png"],
+		"description": "Restores navigation and communication.",
+	},
+	"propellant": {
+		"name": "Propellant & Pressurization Module", "kind": "module", "pixels": 52, "port": Vector2(743, 1107), "color": Color(0.95, 0.35, 0.15),
+		"cost": {"iron_ingot": 3, "aluminum_ingot": 4, "methane": 3, "oxygen": 3},
+		"idle": [NS + "spaceship_components/Propellant_Synthesizer.png"],
+		"description": "Stores and supplies rocket propellant.",
+	},
+	"life_support": {
+		"name": "Life Support Refill Station", "kind": "module", "pixels": 52, "port": Vector2(776, 917), "color": Color(0.65, 0.35, 0.95),
+		"cost": {"iron_ingot": 2, "aluminum_ingot": 3, "oxygen": 4, "water": 3},
+		"idle": [NS + "spaceship_components/life_Support_Refill_Station.png"],
+		"description": "Refills oxygen and water.",
 	},
 }
 const MACHINE_WARNING_ICON := PH + "warning_icon.png"
 
 ## Debug keys for testing (turn OFF before the submission):
-##   1-6 = start placing machine 1-6 of MACHINE_ORDER,  F1 = +50 metal and +50 water,
-##   F2 = jump half a sol ahead (day <-> night),  F3 = first radiation event seen.
-##   F1 also gives 10 of every Build Book material.
+##   F1 = +10 of every material,  F2 = jump half a sol ahead (day <-> night),
+##   F3 = a radiation event starts (warning now),  F4 = a dust storm starts.
 const DEBUG_KEYS := true
 
 
@@ -277,12 +305,11 @@ static func machine(machine_id: String) -> Dictionary:
 
 
 # --- Items the player carries (the inventory on the HUD) ---
-const NS := "res://art/new_sprites/"
 ## Ores are mined from deposits: "per_harvest" is what one press of E gives.
 ## "tint" recolours a reused picture (circuits reuse the electronics art).
 const ITEMS: Dictionary = {
 	"iron": {"name": "Iron Ore", "icon": NS + "new_ores/iron_ore.png", "per_harvest": 3},
-	"aluminum": {"name": "Aluminum Ore", "icon": NS + "new_ores/aluminum_ore.png", "per_harvest": 2},
+	"aluminum": {"name": "Aluminum Ore", "icon": NS + "new_ores/aluminum_ore.png", "per_harvest": 3},
 	"sulfur": {"name": "Sulfur", "icon": NS + "new_ores/sulfur.png", "per_harvest": 2},
 	"electronics": {"name": "Salvaged Electronics", "icon": NS + "new_ores/salvaged_electronics.png", "per_harvest": 1},
 	"circuits": {"name": "Circuits", "icon": NS + "research_sites/05_circuit_board_pickup.png", "per_harvest": 1},
@@ -290,6 +317,7 @@ const ITEMS: Dictionary = {
 	"iron_ingot": {"name": "Iron Ingots", "icon": NS + "new_ores/iron_ingot.png"},
 	"aluminum_ingot": {"name": "Aluminum Ingots", "icon": NS + "new_ores/aluminium_ingot.png"},
 	"sulfur_compound": {"name": "Sulfur Compounds", "icon": NS + "new_ores/sulfer_compound.png"},
+	"wire": {"name": "Wire", "icon": NS + "research_sites/06_broken_cable_bundle.png"},
 	"methane": {"name": "Methane", "icon": NS + "new_ores/methane_capsule.png"},
 	"oxygen": {"name": "Oxygen", "icon": NS + "new_ores/oxygen_capsule.png"},
 	"co2": {"name": "Captured CO2", "icon": NS + "new_ores/co2_capsule.png"},
@@ -298,13 +326,23 @@ const ITEMS: Dictionary = {
 	"water": {"name": "Purified Water", "icon": "res://art/decor/ice_deposit_full.png"},
 }
 const ITEM_ORDER: Array[String] = ["iron", "aluminum", "sulfur", "electronics", "circuits",
-	"iron_ingot", "aluminum_ingot", "sulfur_compound", "methane", "oxygen", "co2", "potato"]
+	"iron_ingot", "aluminum_ingot", "sulfur_compound", "wire", "methane", "oxygen", "co2", "potato"]
 ## Refining: ore -> what it becomes, one for one.
 const REFINE: Dictionary = {"iron": "iron_ingot", "aluminum": "aluminum_ingot", "sulfur": "sulfur_compound"}
-## The Build Book: one page each, in this order. The first six repair the ship.
-const BOOK_ORDER: Array[String] = ["power_station", "propellant", "engine", "avionics", "thermal", "life_support",
-	"greenhouse", "reservoir", "oxygen_gen", "radiation_sensor", "shelter"]
-const REPAIR_ORDER: Array[String] = ["power_station", "propellant", "engine", "avionics", "thermal", "life_support"]
+## The Build Book: one page each, in the order the player can make them
+## (see the dependency map in tools/test_book.gd). The ship modules come last.
+const BOOK_ORDER: Array[String] = ["ore_refinery", "wire", "solar", "battery", "oxygen_gen", "reservoir",
+	"greenhouse", "co2_capture", "oxygen", "methane", "radiation_sensor", "shelter",
+	"power_station", "engine", "thermal", "avionics", "propellant", "life_support"]
+const REPAIR_ORDER: Array[String] = ["power_station", "engine", "thermal", "avionics", "propellant", "life_support"]
+## Production (machines keep working while the player is away, like power).
+const REFINE_SECONDS := 2.0                  # one ore -> one ingot / compound
+const REFINERY_POWER_USE := 0.5
+const CO2_CAPTURE_SECONDS := 15.0            # one CO2 capsule
+const CO2_POWER_USE := 0.5
+## The wreck: salvaged once with E.
+const POWER_CELL_BONUS := 40.0               # emergency power cell: extra storage, delivered full
+const WRECK_POTATOES := 5
 const DEPOSIT_PIXELS := 30.0                 # how wide an ore deposit is drawn
 
 
