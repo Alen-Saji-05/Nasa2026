@@ -14,9 +14,12 @@
 [ext_resource type="Texture2D" uid="uid://bmse8elofu2v1" path="res://art/decor/small_rock.png" id="9_nthub"]
 [ext_resource type="Texture2D" uid="uid://dd6yogbos0rfl" path="res://art/decor/rock_cluster_small.png" id="10_44lqw"]
 [ext_resource type="Texture2D" uid="uid://ckh0gtdx814p6" path="res://art/decor/rock_cluster_large.png" id="11_dwmkc"]
+[ext_resource type="Script" uid="uid://cigs8r21r4tyn" path="res://scenes/hud.gd" id="15_c0d7e"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_hab"]
 size = Vector2(40, 40)
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_c0d7e"]
 
 [node name="World" type="Node2D" unique_id=1387589682]
 script = ExtResource("1_gen")
@@ -293,3 +296,32 @@ texture = ExtResource("9_nthub")
 position = Vector2(392, 320)
 scale = Vector2(0.1, 0.1)
 script = ExtResource("4_pscript")
+
+[node name="UI" type="CanvasLayer" parent="." unique_id=323933095]
+
+[node name="HUD" type="Control" parent="UI" unique_id=500557811]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("15_c0d7e")
+
+[node name="OxygenPanel" type="PanelContainer" parent="UI/HUD" unique_id=220827331]
+layout_mode = 1
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 206.0
+offset_bottom = 81.0
+theme_override_styles/panel = SubResource("StyleBoxEmpty_c0d7e")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="UI/HUD/OxygenPanel" unique_id=1080170114]
+layout_mode = 2
+
+[node name="OxygenBar" type="TextureRect" parent="UI/HUD/OxygenPanel/VBoxContainer" unique_id=1829863228]
+custom_minimum_size = Vector2(160, 40)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
