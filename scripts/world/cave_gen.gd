@@ -44,7 +44,7 @@ var exit_tile := NONE
 var ladder_up_tile := NONE
 ## All but the last layer: the floor tile with the ladder down.
 var ladder_down_tile := NONE
-var nodes: Array[Dictionary] = []            # {id, kind, tile}
+var nodes: Array[Dictionary] = []            # {id, kind, tile, ore (optional: the item id)}
 var door_craters: Array[Rect2i] = []         # craters that fill a door (tiles)
 var small_craters: Array[Vector2i] = []
 var rocks: Array[Vector2i] = []
@@ -451,7 +451,12 @@ func _place_nodes(spec: Dictionary) -> void:
 			placed.append(t)
 			left[kind] -= 1
 			number[kind] += 1
-			nodes.append({"id": node_id(cave_id, layer, kind, number[kind]), "kind": kind, "tile": t})
+			var node := {"id": node_id(cave_id, layer, kind, number[kind]), "kind": kind, "tile": t}
+			# A "metal" deposit is really one of the ores, if the layer names them.
+			var ores: Array = spec.get("ores", [])
+			if kind == "metal" and number[kind] <= ores.size():
+				node["ore"] = ores[number[kind] - 1]
+			nodes.append(node)
 			_blocked[t] = true
 			_keep[t] = true
 

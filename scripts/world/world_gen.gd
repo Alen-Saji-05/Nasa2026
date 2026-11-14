@@ -163,6 +163,55 @@ func _ready() -> void:
 	_place_arrival()
 	_setup_camera()
 	get_viewport().size_changed.connect(_setup_camera)
+	_setup_day_night()
+
+
+## The surface gets darker at night (GameState runs the clock).
+func _setup_day_night() -> void:
+	var state := get_node_or_null("/root/GameState")
+	if state == null:
+		return
+	var tint := CanvasModulate.new()
+	tint.name = "DayNight"
+	add_child(tint)
+
+	# The lamp: a soft glow around the player that comes on as it gets dark.
+	var player := get_node_or_null("Entities/Player") as Node2D
+	if player != null:
+		var gradient := Gradient.new()
+		gradient.set_color(0, Color.WHITE)
+		gradient.set_color(1, Color.BLACK)
+		var tex := GradientTexture2D.new()
+		tex.gradient = gradient
+		tex.width = 128
+		tex.height = 128
+		tex.fill = GradientTexture2D.FILL_RADIAL
+		tex.fill_from = Vector2(0.5, 0.5)
+		tex.fill_to = Vector2(1.0, 0.5)
+		var lamp := PointLight2D.new()
+		lamp.name = "Lamp"
+		lamp.texture = tex
+		lamp.color = Color(1.0, 0.92, 0.75)
+		lamp.scale = Vector2.ONE / player.scale       # the player node is scaled down
+		lamp.texture_scale = Config.LAMP_RADIUS * TILE * 2.0 / tex.width
+		player.add_child(lamp)
+
+	state.day_night_changed.connect(_on_day_night)
+	_on_day_night(state.sol_number, state.sun)
+
+
+func _on_day_night(_sol: int, sun_level: float) -> void:
+	if not is_inside_tree():
+		return                                   # the scene is being unloaded
+	(get_node("DayNight") as CanvasModulate).color = Config.NIGHT_COLOR.lerp(Color.WHITE, sun_level)
+	var lamp := get_node_or_null("Entities/Player/Lamp") as PointLight2D
+	if lamp != null:
+		lamp.energy = (1.0 - sun_level) * 0.9
+	# The first nightfall: the story of the lamp, told once.
+	var state := get_node("/root/GameState")
+	if sun_level < 0.5 and not state.lamp_found:
+		state.lamp_found = true
+		state.say("It is getting dark. You switch on the portable lamp you salvaged from the wreck.")
 
 
 ## Coming back out of a cave: the player stands in front of that cave's entrance.
@@ -588,6 +637,7 @@ func _build_base(ground_decor: Node) -> void:
 	var hab := get_node_or_null("Entities/Hab") as Node2D
 	if hab != null:
 		hab.position = _tile_centre(HAB_TILE)
+		hab.set_script(preload("res://scripts/hab.gd"))   # E at the hab refines ore
 	var player := get_node_or_null("Entities/Player") as Node2D
 	if player != null:
 		player.position = _tile_centre(SPAWN_TILE)

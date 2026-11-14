@@ -60,6 +60,7 @@ var _blink_tweens := {}        # bar -> Tween, only while that bar is blinking
 var _message_tween: Tween
 var _location_label: Label
 var _power_label: Label
+var _sol_label: Label
 
 
 func _ready() -> void:
@@ -75,6 +76,10 @@ func _ready() -> void:
 	GameState.game_ended.connect(_on_game_ended)
 	GameState.location_changed.connect(show_location)
 	GameState.power_changed.connect(update_power)
+	GameState.day_night_changed.connect(update_sol)
+	GameState.inventory_changed.connect(update_inventory)
+	add_child(preload("res://scripts/build_book.gd").new())
+	update_inventory()
 	_make_location_label()
 	show_location(GameState.location_name())
 	update_power()
@@ -137,6 +142,53 @@ func _make_location_label() -> void:
 	_power_label.add_theme_font_size_override("font_size", 14)
 	_power_label.offset_top = 38
 	add_child(_power_label)
+
+	# "SOL 07 / 30", top centre.
+	_sol_label = _location_label.duplicate() as Label
+	_sol_label.name = "Sol"
+	_sol_label.add_theme_font_size_override("font_size", 22)
+	_sol_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_sol_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_sol_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_sol_label.offset_top = 10
+	add_child(_sol_label)
+	update_sol(GameState.sol_number, GameState.sun)
+
+
+## One row under the bars for every item the player carries: picture, name, amount.
+func update_inventory() -> void:
+	var bars := $Bars
+	for row in bars.get_children():
+		if row.name.begins_with("Item_"):
+			bars.remove_child(row)
+			row.queue_free()
+	for id in Config.ITEM_ORDER:
+		var count: int = GameState.item_count(id)
+		if count <= 0:
+			continue
+		var def := Config.item(id)
+		var row := HBoxContainer.new()
+		row.name = "Item_" + id
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var icon := TextureRect.new()
+		icon.texture = load(def.icon)
+		icon.modulate = def.get("tint", Color.WHITE)
+		icon.custom_minimum_size = Vector2(30, 24)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		row.add_child(icon)
+		var label := Label.new()
+		label.text = "%s  %d" % [def.name, count]
+		label.add_theme_font_size_override("font_size", 14)
+		label.add_theme_color_override("font_color", Color(1.0, 0.92, 0.75))
+		label.add_theme_color_override("font_outline_color", Color(0.12, 0.05, 0.04))
+		label.add_theme_constant_override("outline_size", 5)
+		row.add_child(label)
+		bars.add_child(row)
+
+
+func update_sol(sol: int, _sun: float) -> void:
+	_sol_label.text = "SOL %02d / %d" % [sol, Config.TOTAL_SOLS]
 
 
 func show_message(text: String) -> void:

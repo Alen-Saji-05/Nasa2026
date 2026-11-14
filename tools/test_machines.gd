@@ -77,6 +77,12 @@ func _step(seconds: float) -> void:
 		_gs._process(0.1)
 
 
+## Sets the clock to the middle of the day or the middle of the night.
+func _set_time(night: bool) -> void:
+	_gs.sol_elapsed_seconds = Config.SOL_SECONDS * (0.75 if night else 0.2)
+	_gs._process(0.0)
+
+
 ## Places a machine through the Builder, like a player who picked a pad.
 func _build(machine_id: String, pad_id: String) -> Node2D:
 	if not _builder.start_placing(machine_id):
@@ -141,9 +147,10 @@ func _run() -> void:
 	var solar_sprite: AnimatedSprite2D = solar.get_node("Sprite")
 	_check("in the sun the solar panel plays its 4-frame loop", solar_sprite.animation == "running" and solar_sprite.is_playing()
 		and solar_sprite.sprite_frames.get_frame_count("running") == 4)
+	_set_time(false)
 	_step(1.0)
 	_check("one panel in full sun makes %.1f power" % _gs.power_made, is_equal_approx(_gs.power_made, Config.SOLAR_OUTPUT))
-	_gs.sun = 0.0
+	_set_time(true)
 	await _wait(0.05)
 	_check("without sun it shows the idle frame", solar_sprite.animation == "idle")
 
@@ -206,7 +213,7 @@ func _run() -> void:
 	_check("the tank picture shows how full the water is (frame %d)" % tank_sprite.frame, tank_sprite.animation == "levels")
 
 	# --- the ascent vehicle only fits the launch pad ---
-	_gs.sun = 1.0
+	_set_time(false)
 	await _wait(0.4)
 	await _shot("base_with_machines.png")
 	_check("the Ascent Vehicle fits the launch pad and no machine pad",

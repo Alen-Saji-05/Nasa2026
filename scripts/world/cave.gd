@@ -179,9 +179,15 @@ func _faces_south(t: Vector2i) -> bool:
 
 func _place_things(rng: RandomNumberGenerator) -> void:
 	for n in layout.nodes:
-		var s := _sprite(nodes, str(n.id).get_file(), TEX_METAL if n.kind == "metal" else TEX_ICE, NODE_SCALE,
-			_tile_centre(n.tile), RESOURCE_NODE_SCRIPT, {"kind": n.kind, "node_id": n.id})
-		s.set_meta("kind", n.kind)
+		var kind: String = n.get("ore", n.kind)
+		var tex: Texture2D = TEX_METAL if kind == "metal" else TEX_ICE
+		var scl := NODE_SCALE
+		if Config.ITEMS.has(kind):
+			tex = load(Config.item(kind).icon)
+			scl = Vector2.ONE * Config.DEPOSIT_PIXELS / tex.get_size().x
+		var s := _sprite(nodes, str(n.id).get_file(), tex, scl,
+			_tile_centre(n.tile), RESOURCE_NODE_SCRIPT, {"kind": kind, "node_id": n.id})
+		s.set_meta("kind", kind)
 
 	var i := 0
 	for t in layout.rocks:

@@ -200,7 +200,7 @@ func _run() -> void:
 		reach.use()
 		await _wait(0.1)
 		_check("%s: two harvests leave %d of %d uses and give resources" % [cave_name, deposit.get("charges_left"), Config.NODE_CHARGES],
-			deposit.get("charges_left") == Config.NODE_CHARGES - 2 and (_gs.metal > metal_before or _gs.water > water_before))
+			deposit.get("charges_left") == Config.NODE_CHARGES - 2 and (_gs.metal > metal_before or _gs.water > water_before or not _gs.inventory.is_empty()))
 		await _shot("%s_L%d_deposit.png" % [cave_id, layer_count])
 
 		# --- up every ladder ---

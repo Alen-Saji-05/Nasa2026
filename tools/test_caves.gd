@@ -49,6 +49,28 @@ func _run(show_maps: bool) -> void:
 			# Same cave and layer = same layout, every time.
 			_check("%s: building it again gives the same layout" % label, _signature(CaveGen.build(cave, layer)) == layouts[label])
 
+	# --- the ores: every "metal" deposit in a cave is a real ore with art ---
+	var ore_nodes := {}
+	var ores_ok := true
+	for cave in Config.CAVES:
+		for layer in cave.layers.size():
+			for n in CaveGen.build(cave, layer).nodes:
+				if n.kind != "metal":
+					continue
+				var ore: String = n.get("ore", "")
+				if not Config.ITEMS.has(ore) or not ResourceLoader.exists(Config.item(ore).icon):
+					ores_ok = false
+				ore_nodes[ore] = ore_nodes.get(ore, 0) + 1
+	_check("cave deposits by ore: %s" % str(ore_nodes), ores_ok and ore_nodes.get("iron", 0) >= 2
+		and ore_nodes.get("aluminum", 0) >= 4 and ore_nodes.get("sulfur", 0) >= 2 and ore_nodes.get("electronics", 0) >= 1)
+	# What the six ship repairs and the CO2 capture machine need in total.
+	var need := {"iron": 20, "aluminum": 28, "sulfur": 8, "electronics": 2}
+	var enough := true
+	for id: String in need:
+		if ore_nodes.get(id, 0) * Config.NODE_CHARGES * int(Config.item(id).per_harvest) < need[id]:
+			enough = false
+	_check("the caves hold enough ore for every ship repair %s" % str(need), enough)
+
 	# --- every cave and layer is different ---
 	var unique := {}
 	for label: String in layouts:

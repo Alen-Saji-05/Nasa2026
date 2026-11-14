@@ -35,7 +35,9 @@ func _ready() -> void:
 		push_warning("Machine: unknown machine '%s'" % machine_id)
 		return
 	sprite.sprite_frames = _make_frames(def)
-	sprite.scale = Vector2.ONE * float(def.scale)
+	sprite.scale = Vector2.ONE * float(def.get("scale", 1.0))
+	if def.has("pixels"):
+		sprite.scale = Vector2.ONE * float(def.pixels) / _art_size().x
 	# The art stands on the node's position (its feet), so y-sorting works.
 	var frame_size := _art_size()
 	sprite.offset = Vector2(0, -frame_size.y * 0.5)
@@ -66,7 +68,7 @@ func display_name() -> String:
 ## One line about what the machine is doing right now.
 func status_text() -> String:
 	var name_text := display_name()
-	match machine_id:
+	match Config.machine(machine_id).get("acts_as", machine_id):
 		"solar":
 			if GameState.sun <= 0.05:
 				return "%s: no sunlight, making nothing" % name_text
@@ -101,7 +103,7 @@ func prompt_offset() -> Vector2:
 
 func _update_look() -> void:
 	var problem := ""
-	match machine_id:
+	match Config.machine(machine_id).get("acts_as", machine_id):
 		"solar":
 			_play("running" if GameState.sun > 0.05 else "idle")
 		"battery":
@@ -127,6 +129,9 @@ func _play(anim: String) -> void:
 
 ## Picks a "levels" frame: 0 = empty, last = full. Empty only at (almost) zero.
 func _show_level(share: float) -> void:
+	if not sprite.sprite_frames.has_animation("levels"):
+		_play("idle")
+		return
 	sprite.animation = "levels"
 	var last := sprite.sprite_frames.get_frame_count("levels") - 1
 	var index := 0

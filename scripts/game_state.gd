@@ -16,6 +16,10 @@ signal game_ended(reason: String)
 signal location_changed(place: String)
 ## A machine was built (or everything was reset).
 signal machines_changed
+## Something was added to or taken from the inventory.
+signal inventory_changed
+## Build Book recipes were just discovered (a list of machine ids).
+signal recipes_unlocked(ids: Array)
 ## Power made, power used or the battery changed.
 signal power_changed
 signal day_night_changed(sol: int, sun_level: float)
@@ -50,6 +54,16 @@ var arrival: String = ""
 ## Uses left of every deposit that was harvested: deposit id -> charges.
 ## Deposits that are not in here are still full.
 var node_charges: Dictionary = {}
+## What the player carries: item id (see Config.ITEMS) -> how many.
+var inventory: Dictionary = {}
+## Every item id the player ever obtained. Recipes unlock from this and never lock again.
+var discovered: Dictionary = {}
+## Recipes discovered but not looked at in the book yet (their page shimmers once).
+var new_recipes: Array[String] = []
+## True after the first radiation event (unlocks the radiation recipes).
+var radiation_seen: bool = false
+## The lamp from the wreck: switched on at the first nightfall.
+var lamp_found: bool = false
 
 # --- Machines and power (see builder.gd, machine.gd) ---
 ## Every machine that was built: build pad id -> machine id ("pad_03" -> "solar").
@@ -179,6 +193,81 @@ func spend(metal_cost: int, water_cost: float) -> bool:
 	return true
 
 
+# --- Inventory ---
+
+func add_item(item_id: String, amount: int = 1) -> void:
+	var before := unlocked_recipes()
+	inventory[item_id] = item_count(item_id) + amount
+	discovered[item_id] = true
+	inventory_changed.emit()
+	_announce_unlocks(before)
+
+
+## "water" is the water bar, everything else is the inventory.
+func item_count(item_id: String) -> int:
+	if item_id == "water":
+		return floori(water)
+	return inventory.get(item_id, 0)
+
+
+# --- Build Book recipes ---
+
+## A recipe is discovered once the player has obtained at least one of its
+## materials. Radiation machines also need the first radiation event.
+func recipe_unlocked(machine_id: String) -> bool:
+	var def := Config.machine(machine_id)
+	if def.get("needs_radiation", false) and not radiation_seen:
+		return false
+	for item_id: String in def.get("cost", {}):
+		if discovered.has(item_id):
+			return true
+	return false
+
+
+func unlocked_recipes() -> Array:
+	return Config.BOOK_ORDER.filter(recipe_unlocked)
+
+
+## Call when the first radiation event happens.
+func see_radiation() -> void:
+	var before := unlocked_recipes()
+	radiation_seen = true
+	_announce_unlocks(before)
+
+
+func _announce_unlocks(before: Array) -> void:
+	var fresh: Array = unlocked_recipes().filter(func(id: String) -> bool: return not before.has(id))
+	if not fresh.is_empty():
+		new_recipes.append_array(fresh)
+		recipes_unlocked.emit(fresh)
+
+
+## True when all six ship systems are built.
+func ship_repaired() -> bool:
+	return Config.REPAIR_ORDER.all(has_built)
+
+
+## True if the inventory holds everything in `cost` (item id -> amount).
+func has_items(cost: Dictionary) -> bool:
+	for id: String in cost:
+		if item_count(id) < int(cost[id]):
+			return false
+	return true
+
+
+## Takes everything in `cost`. Returns false and changes nothing if something is missing.
+func spend_items(cost: Dictionary) -> bool:
+	if not has_items(cost):
+		return false
+	for id: String in cost:
+		if id == "water":
+			consume_water(float(cost[id]))
+		else:
+			inventory[id] = item_count(id) - int(cost[id])
+	inventory_changed.emit()
+	return true
+
+
 # --- Machines and power ---
 
 ## What stops this machine from being paid for, or "" if it can be.
@@ -188,6 +277,11 @@ func cost_problem(machine_id: String) -> String:
 	if def.is_empty():
 		return "Unknown machine"
 	var missing: Array[String] = []
+	if def.has("cost"):
+		for item_id: String in def.cost:
+			if item_count(item_id) < int(def.cost[item_id]):
+				missing.append("%d %s (you have %d)" % [def.cost[item_id], Config.item(item_id).name, item_count(item_id)])
+		return "" if missing.is_empty() else "Need " + ", ".join(missing)
 	if metal < int(def.metal):
 		missing.append("%d metal (you have %d)" % [def.metal, metal])
 	if water < float(def.water):
@@ -200,15 +294,21 @@ func cost_problem(machine_id: String) -> String:
 ## Records a built machine and applies what it does once (a tank raises the water limit).
 func add_machine(pad_id: String, machine_id: String) -> void:
 	machines[pad_id] = machine_id
-	if machine_id == "water_tank":
+	var kind: String = Config.machine(machine_id).get("acts_as", machine_id)
+	if kind == "water_tank":
 		add_water_limit(Config.WATER_TANK_LIMIT_BONUS)
-	if machine_id == "o2_generator":
+	if kind == "o2_generator":
 		o2_generator_built = true
 	machines_changed.emit()
 
 
+## Counts machines of this id, and machines that act as it (a Power Station is a solar panel).
 func machine_count(machine_id: String) -> int:
-	return machines.values().count(machine_id)
+	var count := 0
+	for built: String in machines.values():
+		if built == machine_id or Config.machine(built).get("acts_as", "") == machine_id:
+			count += 1
+	return count
 
 
 func has_built(machine_id: String) -> bool:
@@ -304,6 +404,12 @@ func reset() -> void:
 	cave_layer = 0
 	arrival = ""
 	node_charges.clear()
+	inventory.clear()
+	discovered.clear()
+	new_recipes.clear()
+	radiation_seen = false
+	lamp_found = false
+	inventory_changed.emit()
 	machines.clear()
 	sun = 1.0
 	battery_charge = Config.HAB_BATTERY_CAPACITY
@@ -345,6 +451,10 @@ func _update_day_night(delta: float) -> void:
 	sol_elapsed_seconds += delta
 
 	sol_number = int(floor(sol_elapsed_seconds / Config.SOL_SECONDS)) + 1
+	if sol_number > Config.TOTAL_SOLS:
+		sol_number = Config.TOTAL_SOLS
+		_end_game("Return window closed")
+		return
 
 	var progress := fmod(sol_elapsed_seconds, Config.SOL_SECONDS) / Config.SOL_SECONDS
 

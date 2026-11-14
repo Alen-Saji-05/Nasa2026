@@ -73,6 +73,40 @@ func _run() -> void:
 			not travel.busy and current_scene == world)
 	await _shot("at_entrance.png")
 
+	# --- the sol counter and the night ---
+	var sol_label := world.get_node("UI/HUD/Sol") as Label
+	var tint := world.get_node("DayNight") as CanvasModulate
+	_gs.sol_elapsed_seconds = Config.SOL_SECONDS * 4.2
+	_gs._process(0.0)
+	await _wait(0.05)
+	var day_brightness := tint.color.get_luminance()
+	_check("by day the HUD says '%s' and the surface is bright (%.2f)" % [sol_label.text, day_brightness],
+		sol_label.text == "SOL 05 / 30" and day_brightness > 0.95)
+	_gs.sol_elapsed_seconds = Config.SOL_SECONDS * 4.8
+	_gs._process(0.0)
+	await _wait(0.05)
+	_check("at night the surface is darker (%.2f) but still readable" % tint.color.get_luminance(),
+		tint.color.get_luminance() < 0.6 and tint.color.get_luminance() > 0.3)
+	var lamp := player.get_node("Lamp") as PointLight2D
+	_check("at night the lamp glows around the player, and its story was told once %s" % str(_messages),
+		lamp.energy > 0.5 and _gs.lamp_found and _messages.filter(func(m: String) -> bool: return m.contains("lamp")).size() == 1)
+	player.global_position = world.get_node("Entities/Hab").global_position + Vector2(0, 50)
+
+	# --- the inventory on the HUD ---
+	_gs.add_item("iron", 3)
+	_gs.add_item("sulfur", 2)
+	_gs.add_item("iron", 3)
+	await _wait(0.1)
+	var iron_row := world.get_node_or_null("UI/HUD/Bars/Item_iron")
+	_check("carried items show on the HUD: '%s'" % (iron_row.get_child(1).text if iron_row != null else ""),
+		iron_row != null and iron_row.get_child(1).text == "Iron Ore  6" and world.get_node_or_null("UI/HUD/Bars/Item_sulfur") != null
+		and world.get_node_or_null("UI/HUD/Bars/Item_aluminum") == null)
+	await _wait(0.3)
+	await _shot("night.png")
+	_gs.sol_elapsed_seconds = Config.SOL_SECONDS * 0.2
+	_gs._process(0.0)
+	_check("by day the lamp is off", lamp.energy < 0.05)
+
 	# --- the camera never shows the outside of the map ---
 	var map_pixels := Vector2(world.MAP_SIZE * world.TILE)
 	for window_size in [Vector2i(1152, 648), Vector2i(1920, 1080), Vector2i(2560, 1080), Vector2i(900, 1200)]:

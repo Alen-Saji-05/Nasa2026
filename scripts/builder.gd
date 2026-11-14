@@ -30,6 +30,8 @@ func build_problem(machine_id: String) -> String:
 		return "The game is over"
 	if GameState.cave_id != "":
 		return "Machines are built at the base"
+	if def.get("unique", false) and GameState.has_built(machine_id):
+		return "Already built"
 	var cost := GameState.cost_problem(machine_id)
 	if cost != "":
 		return cost
@@ -67,7 +69,8 @@ func place_on(pad: Node) -> Node:
 		GameState.say("That pad does not fit the %s" % Config.machine(machine_id).name)
 		return null
 	var def := Config.machine(machine_id)
-	if not GameState.spend(int(def.metal), float(def.water)):
+	var paid: bool = GameState.spend_items(def.cost) if def.has("cost") else GameState.spend(int(def.metal), float(def.water))
+	if not paid:
 		GameState.say(GameState.cost_problem(machine_id))
 		cancel()
 		return null
@@ -79,6 +82,8 @@ func place_on(pad: Node) -> Node:
 	built.emit(machine_id, pad.pad_id)
 	if machine_id == "ascent":
 		m.launch()
+	elif GameState.ship_repaired():
+		GameState.win("All six ship systems are repaired. You launch for home!")
 	return m
 
 
@@ -128,7 +133,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif key.physical_keycode == KEY_F1:
 		GameState.add_metal(50)
 		GameState.add_water(50.0)
-		GameState.say("Debug: +50 metal, +50 water")
+		for id: String in ["iron_ingot", "aluminum_ingot", "sulfur_compound", "methane", "oxygen", "potato", "electronics"]:
+			GameState.add_item(id, 10)
+		GameState.say("Debug: +50 metal, +50 water, +10 of every material")
+	elif key.physical_keycode == KEY_F3:
+		GameState.see_radiation()
+		GameState.say("Debug: first radiation event seen")
 	elif key.physical_keycode == KEY_F2:
-		GameState.sun = 0.0 if GameState.sun > 0.0 else 1.0
-		GameState.say("Debug: sun %s" % ("on" if GameState.sun > 0.0 else "off"))
+		GameState.sol_elapsed_seconds += Config.SOL_SECONDS * 0.5
+		GameState.say("Debug: half a sol later")

@@ -1,5 +1,6 @@
 extends Sprite2D
-## A crater on a path. Walking into it costs oxygen (Config.CRATER_O2_PENALTY).
+## A crater on a path. It only costs oxygen if Config.CRATER_O2_PENALTY is above 0
+## (it is 0 now: walking over craters must not cost oxygen).
 ## The penalty is applied once per entry, never every frame.
 ##
 ## The trigger area is created at run time, so the .tscn stays clean.
@@ -28,7 +29,7 @@ func _ready() -> void:
 
 
 func _on_body_entered(body: Node2D) -> void:
-	if not (body is CharacterBody2D) or GameState.game_over:
+	if not (body is CharacterBody2D) or GameState.game_over or Config.CRATER_O2_PENALTY <= 0.0:
 		return
 	var now := Time.get_ticks_msec()
 	if now < _next_hit_msec:

@@ -1,6 +1,6 @@
 class_name ResourceNode
 extends Sprite2D
-## A metal or ice deposit. The player harvests it with E (see harvester.gd, the Interactor).
+## A deposit: metal, ice, or one of the ores in Config.ITEMS (iron, aluminum, sulfur, ...). The player harvests it with E (see harvester.gd, the Interactor).
 ## It has a few uses (charges). When they are gone it shows the depleted art.
 ## The map generator (world_gen.gd) creates these.
 
@@ -15,7 +15,8 @@ const TEX_DEPLETED := {
 }
 const SPARKLE_NAME := "Sparkle"
 
-@export_enum("metal", "ice") var kind: String = "metal"
+## "metal", "ice", or an item id from Config.ITEMS.
+@export var kind: String = "metal"
 @export var charges_left: int = Config.NODE_CHARGES
 ## Stable name ("surface/Metal01", "ice/L2/Ice01"). With an id the deposit
 ## remembers its uses when the player leaves and comes back.
@@ -66,6 +67,10 @@ func harvest() -> String:
 			return ""
 		var added: float = GameState.add_water(Config.WATER_PER_HARVEST)
 		text = "+%s water" % _short_number(added)
+	elif Config.ITEMS.has(kind):
+		var def := Config.item(kind)
+		GameState.add_item(kind, def.per_harvest)
+		text = "+%d %s" % [def.per_harvest, def.name]
 	else:
 		if GameState.metal >= Config.METAL_MAX:
 			GameState.say("Metal storage full")
@@ -83,6 +88,10 @@ func harvest() -> String:
 func _refresh() -> void:
 	var textures: Dictionary = TEX_DEPLETED if is_empty() else TEX_FULL
 	texture = textures.get(kind, texture)
+	if Config.ITEMS.has(kind):
+		# Ores have one picture: an empty deposit is the same picture, greyed out.
+		var tint: Color = Config.item(kind).get("tint", Color.WHITE)
+		modulate = Color(0.45, 0.42, 0.42) if is_empty() else tint
 	if is_empty():
 		var old := get_node_or_null(SPARKLE_NAME)
 		if old != null:

@@ -34,11 +34,12 @@ func _run() -> void:
 	_check("start O2 100, water 50/60, metal 30",
 		_near(_gs.oxygen, 100) and _near(_gs.water, 50) and _near(_gs.water_limit, 60) and _gs.metal == 30)
 
-	# --- drain: one sol (15 s) costs 6 O2 and 6 water ---
-	for i in 150:
+	# --- drain: one sol costs O2_DRAIN_PER_SOL oxygen and WATER_DRAIN_PER_SOL water ---
+	for i in int(Config.SOL_SECONDS * 10.0):
 		_gs._process(0.1)
-	_check("one sol drains 6 O2 (now %.2f)" % _gs.oxygen, _near(_gs.oxygen, 94))
-	_check("one sol drains 6 water (now %.2f)" % _gs.water, _near(_gs.water, 44))
+	_check("one sol drains %d O2 (now %.2f)" % [Config.O2_DRAIN_PER_SOL, _gs.oxygen], _near(_gs.oxygen, 100.0 - Config.O2_DRAIN_PER_SOL))
+	_check("one sol drains %d water (now %.2f)" % [Config.WATER_DRAIN_PER_SOL, _gs.water], _near(_gs.water, 50.0 - Config.WATER_DRAIN_PER_SOL))
+	_check("a sol is 60 seconds", _near(Config.SOL_SECONDS, 60.0))
 
 	# --- metal node ---
 	_gs.reset()
@@ -123,5 +124,45 @@ func _run() -> void:
 	var w: float = _gs.water
 	_gs._process(1.0)
 	_check("O2 generator: +0.45 O2/s and -0.15 water/s on top of the drain",
-		_near(_gs.oxygen, o2 + 0.45 - 0.4) and _near(_gs.water, w - 0.15 - 0.4))
+		_near(_gs.oxygen, o2 + Config.O2_GEN_RATE - Config.O2_DRAIN_PER_SEC) and _near(_gs.water, w - 0.15 - Config.WATER_DRAIN_PER_SEC))
+	_gs.reset()
+
+	# --- inventory ---
+	_gs.add_item("iron", 3)
+	_gs.add_item("iron", 3)
+	_gs.add_item("sulfur", 2)
+	_check("items add up: 6 iron, 2 sulfur, 0 aluminum",
+		_gs.item_count("iron") == 6 and _gs.item_count("sulfur") == 2 and _gs.item_count("aluminum") == 0)
+	_check("cannot spend what you do not have, and nothing is taken",
+		not _gs.spend_items({"iron": 2, "aluminum": 1}) and _gs.item_count("iron") == 6)
+	_check("spending takes the items", _gs.spend_items({"iron": 5, "sulfur": 2}) and _gs.item_count("iron") == 1 and _gs.item_count("sulfur") == 0)
+	var ore = _node_script.new()
+	ore.kind = "aluminum"
+	root.add_child(ore)
+	var ore_o2: float = _gs.oxygen
+	_check("an aluminum deposit gives '%s' and costs 1 O2" % ore.harvest(),
+		_gs.item_count("aluminum") == Config.item("aluminum").per_harvest and _near(_gs.oxygen, ore_o2 - Config.O2_HARVEST_COST))
+	for i in Config.NODE_CHARGES - 1:
+		ore.harvest()
+	_check("after %d uses the ore deposit is empty and greyed out" % Config.NODE_CHARGES,
+		ore.is_empty() and ore.harvest() == "" and ore.modulate.r < 0.6)
+	ore.free()
+	_gs.reset()
+	_check("a new game has an empty inventory and no lamp yet", _gs.inventory.is_empty() and not _gs.lamp_found)
+
+	# --- sols, night and the 30-sol deadline ---
+	_check("a new game starts on sol 1 of %d" % Config.TOTAL_SOLS, _gs.sol_number == 1 and Config.TOTAL_SOLS == 30)
+	_gs.sol_elapsed_seconds = Config.SOL_SECONDS * 6.3
+	_gs._process(0.0)
+	_check("after 6.3 sols it is sol 7, daytime (sun %.1f)" % _gs.sun, _gs.sol_number == 7 and _near(_gs.sun, 1.0))
+	_gs.sol_elapsed_seconds = Config.SOL_SECONDS * 6.8
+	_gs._process(0.0)
+	_check("later the same sol it is night (sun %.1f)" % _gs.sun, _gs.sol_number == 7 and _near(_gs.sun, 0.0))
+	_gs.sol_elapsed_seconds = Config.SOL_SECONDS * 29.9
+	_gs._process(0.0)
+	_check("sol 30 is still playable", _gs.sol_number == 30 and not _gs.game_over)
+	reasons.clear()
+	_gs._process(Config.SOL_SECONDS * 0.2)
+	_check("when sol 30 ends the game is lost: %s" % str(reasons), _gs.game_over and reasons == ["Return window closed"] and not _gs.game_won)
+	_check("walking over craters costs no oxygen (penalty %d)" % Config.CRATER_O2_PENALTY, Config.CRATER_O2_PENALTY == 0.0)
 	_gs.reset()
