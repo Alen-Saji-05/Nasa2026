@@ -1,18 +1,19 @@
-[gd_scene format=4]
+[gd_scene format=4 uid="uid://byvg5tsijk2c4"]
 
-[ext_resource type="Script" path="res://scripts/world/world_gen.gd" id="1_gen"]
-[ext_resource type="TileSet" path="res://art/tilesets/mars_tileset.tres" id="2_tiles"]
-[ext_resource type="Texture2D" path="res://art/craters/crater_3x3.png" id="3_nrtoj"]
-[ext_resource type="PackedScene" path="res://player.tscn" id="3_player"]
-[ext_resource type="Texture2D" path="res://art/craters/crater_single.png" id="4_i4b1j"]
-[ext_resource type="Script" path="res://player.gd" id="4_pscript"]
-[ext_resource type="Texture2D" path="res://art/craters/crater_2x2.png" id="5_c0d7e"]
-[ext_resource type="Texture2D" path="res://art/overlays/metal_grate.png" id="5_grate"]
-[ext_resource type="Texture2D" path="res://art/decor/ore_rock.png" id="7_o1tcx"]
-[ext_resource type="Texture2D" path="res://art/decor/ice_crystal_cluster.png" id="8_rpuxp"]
-[ext_resource type="Texture2D" path="res://art/decor/small_rock.png" id="9_nthub"]
-[ext_resource type="Texture2D" path="res://art/decor/rock_cluster_small.png" id="10_44lqw"]
-[ext_resource type="Texture2D" path="res://art/decor/rock_cluster_large.png" id="11_dwmkc"]
+[ext_resource type="Script" uid="uid://roaac8m72454" path="res://scripts/world/world_gen.gd" id="1_gen"]
+[ext_resource type="TileSet" uid="uid://y15sbxmdnnqe" path="res://art/tilesets/mars_tileset.tres" id="2_tiles"]
+[ext_resource type="Texture2D" uid="uid://dhnkf0vd8wmue" path="res://art/craters/crater_3x3.png" id="3_nrtoj"]
+[ext_resource type="PackedScene" uid="uid://dnlf03xaufkq3" path="res://player.tscn" id="3_player"]
+[ext_resource type="Texture2D" uid="uid://bgxxuafjs1nq0" path="res://art/craters/crater_single.png" id="4_i4b1j"]
+[ext_resource type="Script" uid="uid://dpgfuytdcui2g" path="res://player.gd" id="4_pscript"]
+[ext_resource type="Texture2D" uid="uid://cy67h3c78ueg5" path="res://art/craters/crater_2x2.png" id="5_c0d7e"]
+[ext_resource type="Texture2D" uid="uid://vmij6xv4vc4o" path="res://art/overlays/metal_grate.png" id="5_grate"]
+[ext_resource type="Script" uid="uid://b7ngvr740gh3k" path="res://scripts/new_script.gd" id="7_i4b1j"]
+[ext_resource type="Texture2D" uid="uid://dievhloc31rur" path="res://art/decor/ore_rock.png" id="7_o1tcx"]
+[ext_resource type="Texture2D" uid="uid://dvqnv0poebdfh" path="res://art/decor/ice_crystal_cluster.png" id="8_rpuxp"]
+[ext_resource type="Texture2D" uid="uid://bmse8elofu2v1" path="res://art/decor/small_rock.png" id="9_nthub"]
+[ext_resource type="Texture2D" uid="uid://dd6yogbos0rfl" path="res://art/decor/rock_cluster_small.png" id="10_44lqw"]
+[ext_resource type="Texture2D" uid="uid://ckh0gtdx814p6" path="res://art/decor/rock_cluster_large.png" id="11_dwmkc"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_hab"]
 size = Vector2(40, 40)
@@ -91,6 +92,7 @@ shape = SubResource("RectangleShape2D_hab")
 
 [node name="Nodes" type="Node2D" parent="Entities" unique_id=278825647]
 y_sort_enabled = true
+script = ExtResource("7_i4b1j")
 
 [node name="Metal01" type="Sprite2D" parent="Entities/Nodes" unique_id=271967500]
 position = Vector2(328, 280)
@@ -214,6 +216,7 @@ metadata/kind = "ice"
 
 [node name="Decor" type="Node2D" parent="Entities" unique_id=531729540]
 y_sort_enabled = true
+script = ExtResource("7_i4b1j")
 
 [node name="Rock01" type="Sprite2D" parent="Entities/Decor" unique_id=421307413]
 position = Vector2(88, 424)
@@ -285,6 +288,7 @@ position = Vector2(376, 408)
 scale = Vector2(0.25, 0.25)
 texture = ExtResource("9_nthub")
 
-[node name="Player" type="CharacterBody2D" parent="Entities" unique_id=1137681477 instance=ExtResource("3_player")]
+[node name="Player" parent="Entities" unique_id=1137681477 instance=ExtResource("3_player")]
 position = Vector2(392, 320)
+scale = Vector2(0.1, 0.1)
 script = ExtResource("4_pscript")

@@ -91,7 +91,7 @@ scale = Vector2(0.25, 0.25)
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=2122534671]
 sprite_frames = SubResource("SpriteFrames_ki23o")
-animation = &"front"
+animation = &"side"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1785823321]
 shape = SubResource("CircleShape2D_ki23o")
