@@ -2576,6 +2576,7 @@ scale = Vector2(0.4, 0.4)
 texture = ExtResource("5_grate")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Entities/Hab" unique_id=1545733972]
+position = Vector2(-2, -2)
 shape = SubResource("RectangleShape2D_hab")
 
 [node name="Nodes" type="Node2D" parent="Entities" unique_id=278825647]
