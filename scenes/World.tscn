@@ -1,4 +1,4 @@
-[gd_scene format=4 uid="uid://byvg5tsijk2c4"]
+[gd_scene format=4 uid="uid://ds7x2di4r4383"]
 
 [ext_resource type="Script" uid="uid://roaac8m72454" path="res://scripts/world/world_gen.gd" id="1_gen"]
 [ext_resource type="TileSet" uid="uid://y15sbxmdnnqe" path="res://art/tilesets/mars_tileset.tres" id="2_tiles"]
@@ -88,6 +88,7 @@ scale = Vector2(0.4, 0.4)
 texture = ExtResource("5_grate")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Entities/Hab" unique_id=1545733972]
+position = Vector2(-2, -2)
 shape = SubResource("RectangleShape2D_hab")
 
 [node name="Nodes" type="Node2D" parent="Entities" unique_id=278825647]
