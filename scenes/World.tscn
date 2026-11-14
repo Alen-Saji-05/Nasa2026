@@ -1,30 +1,30 @@
-[gd_scene format=4]
+[gd_scene format=4 uid="uid://dk3p0md7t6f0v"]
 
-[ext_resource type="Script" path="res://scripts/world/world_gen.gd" id="1_gen"]
-[ext_resource type="TileSet" path="res://art/tilesets/mars_tileset.tres" id="2_tiles"]
-[ext_resource type="Texture2D" path="res://art/overlays/footprints.png" id="3_4q8dg"]
-[ext_resource type="PackedScene" path="res://player.tscn" id="3_player"]
-[ext_resource type="Texture2D" path="res://art/craters/crater_single.png" id="4_i4b1j"]
-[ext_resource type="Texture2D" path="res://art/placeholders/rocket_debris_placeholder.png" id="4_lawxi"]
-[ext_resource type="Script" path="res://player.gd" id="4_pscript"]
-[ext_resource type="Texture2D" path="res://art/overlays/metal_grate.png" id="5_grate"]
-[ext_resource type="Script" path="res://scripts/crater_hazard.gd" id="6_lawxi"]
-[ext_resource type="Texture2D" path="res://art/placeholders/build_pad_placeholder.png" id="7_aqlsr"]
-[ext_resource type="Script" path="res://scripts/new_script.gd" id="7_i4b1j"]
-[ext_resource type="Script" path="res://scripts/build_pad.gd" id="8_n2fr6"]
-[ext_resource type="Texture2D" path="res://art/decor/small_rock.png" id="9_nthub"]
-[ext_resource type="Texture2D" path="res://art/cliffs/cliff_left.png" id="10_uni40"]
-[ext_resource type="Texture2D" path="res://art/cliffs/cliff_right.png" id="11_aqlsr"]
-[ext_resource type="Texture2D" path="res://art/decor/rock_cluster_large.png" id="11_dwmkc"]
-[ext_resource type="Script" path="res://scripts/cave_entrance.gd" id="12_128ka"]
-[ext_resource type="Texture2D" path="res://art/decor/metal_ore_full.png" id="13_n2fr6"]
-[ext_resource type="Texture2D" path="res://art/placeholders/cave_entrance_placeholder.png" id="13_ngql4"]
-[ext_resource type="Script" path="res://scripts/hab.gd" id="14_4q8dg"]
-[ext_resource type="Script" path="res://scripts/resource_node.gd" id="14_128ka"]
-[ext_resource type="Texture2D" path="res://art/decor/ice_deposit_full.png" id="15_ngql4"]
-[ext_resource type="Texture2D" path="res://art/decor/ice_crystal.png" id="18_b64vv"]
-[ext_resource type="Texture2D" path="res://art/placeholders/broken_rocket_placeholder.png" id="20_b64vv"]
-[ext_resource type="Texture2D" path="res://art/decor/rock_cluster_small.png" id="20_n2fr6"]
+[ext_resource type="Script" uid="uid://roaac8m72454" path="res://scripts/world/world_gen.gd" id="1_gen"]
+[ext_resource type="TileSet" uid="uid://y15sbxmdnnqe" path="res://art/tilesets/mars_tileset.tres" id="2_tiles"]
+[ext_resource type="Texture2D" uid="uid://dvtnusf1q2kxu" path="res://art/overlays/footprints.png" id="3_4q8dg"]
+[ext_resource type="PackedScene" uid="uid://dnlf03xaufkq3" path="res://player.tscn" id="3_player"]
+[ext_resource type="Texture2D" uid="uid://bgxxuafjs1nq0" path="res://art/craters/crater_single.png" id="4_i4b1j"]
+[ext_resource type="Texture2D" uid="uid://bjn87bkna8bna" path="res://art/placeholders/rocket_debris_placeholder.png" id="4_lawxi"]
+[ext_resource type="Script" uid="uid://dpgfuytdcui2g" path="res://player.gd" id="4_pscript"]
+[ext_resource type="Texture2D" uid="uid://vmij6xv4vc4o" path="res://art/overlays/metal_grate.png" id="5_grate"]
+[ext_resource type="Script" uid="uid://biogr4faui4tv" path="res://scripts/crater_hazard.gd" id="6_lawxi"]
+[ext_resource type="Texture2D" uid="uid://dmmyo0njwfblw" path="res://art/placeholders/build_pad_placeholder.png" id="7_aqlsr"]
+[ext_resource type="Script" uid="uid://b7ngvr740gh3k" path="res://scripts/new_script.gd" id="7_i4b1j"]
+[ext_resource type="Script" uid="uid://b3re2cgqh8pd8" path="res://scripts/build_pad.gd" id="8_n2fr6"]
+[ext_resource type="Texture2D" uid="uid://bmse8elofu2v1" path="res://art/decor/small_rock.png" id="9_nthub"]
+[ext_resource type="Texture2D" uid="uid://bu4q4jw023xkm" path="res://art/cliffs/cliff_left.png" id="10_uni40"]
+[ext_resource type="Texture2D" uid="uid://b3hv2op2chr04" path="res://art/cliffs/cliff_right.png" id="11_aqlsr"]
+[ext_resource type="Texture2D" uid="uid://ckh0gtdx814p6" path="res://art/decor/rock_cluster_large.png" id="11_dwmkc"]
+[ext_resource type="Script" uid="uid://dbfi1ff837vce" path="res://scripts/cave_entrance.gd" id="12_128ka"]
+[ext_resource type="Texture2D" uid="uid://hyugmc77fiol" path="res://art/decor/metal_ore_full.png" id="13_n2fr6"]
+[ext_resource type="Texture2D" uid="uid://dhy34ywtockkg" path="res://art/placeholders/cave_entrance_placeholder.png" id="13_ngql4"]
+[ext_resource type="Script" uid="uid://f4vdqwjpbue4" path="res://scripts/hab.gd" id="14_4q8dg"]
+[ext_resource type="Script" uid="uid://dgrkyt4vcyw5q" path="res://scripts/resource_node.gd" id="14_128ka"]
+[ext_resource type="Texture2D" uid="uid://lm6rw1twnvph" path="res://art/decor/ice_deposit_full.png" id="15_ngql4"]
+[ext_resource type="Texture2D" uid="uid://br0p8juolctar" path="res://art/decor/ice_crystal.png" id="18_b64vv"]
+[ext_resource type="Texture2D" uid="uid://b47mxka2q4bs" path="res://art/placeholders/broken_rocket_placeholder.png" id="20_b64vv"]
+[ext_resource type="Texture2D" uid="uid://dd6yogbos0rfl" path="res://art/decor/rock_cluster_small.png" id="20_n2fr6"]
 [ext_resource type="PackedScene" path="res://scenes/HUD.tscn" id="25_jgbtq"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_lawxi"]
@@ -43,12 +43,12 @@ size = Vector2(40, 40)
 size = Vector2(66.15, 21)
 
 [sub_resource type="Gradient" id="Gradient_128ka"]
-offsets = PackedFloat32Array(0, 1, 0.15, 0.6)
-colors = PackedColorArray(0.3, 0.28, 0.3, 0, 0.62, 0.6, 0.62, 0, 0.36, 0.34, 0.36, 0.8, 0.5, 0.48, 0.5, 0.45)
+offsets = PackedFloat32Array(0, 0.15, 0.6, 1)
+colors = PackedColorArray(0.3, 0.28, 0.3, 0, 0.36, 0.34, 0.36, 0.8, 0.5, 0.48, 0.5, 0.45, 0.62, 0.6, 0.62, 0)
 
 [sub_resource type="Gradient" id="Gradient_ngql4"]
-offsets = PackedFloat32Array(0, 1, 0.25, 0.4)
-colors = PackedColorArray(1, 0.85, 0.35, 1, 1, 0.3, 0.1, 0, 1, 0.5, 0.15, 0.9, 1, 0.3, 0.1, 0)
+offsets = PackedFloat32Array(0, 0.25, 0.4, 1)
+colors = PackedColorArray(1, 0.85, 0.35, 1, 1, 0.5, 0.15, 0.9, 1, 0.3, 0.1, 0, 1, 0.3, 0.1, 0)
 
 [node name="World" type="Node2D" unique_id=1387589682]
 script = ExtResource("1_gen")
