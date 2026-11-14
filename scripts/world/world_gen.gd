@@ -174,6 +174,7 @@ func _ready() -> void:
 	_setup_camera()
 	get_viewport().size_changed.connect(_setup_camera)
 	_setup_day_night()
+	_setup_ice_spawns()
 	var dialogue := get_node_or_null("/root/Dialogue")
 	if dialogue != null:
 		dialogue.once("intro", true)
@@ -227,6 +228,60 @@ func _on_day_night(_sol: int, sun_level: float) -> void:
 		var dialogue := get_node_or_null("/root/Dialogue")
 		if dialogue != null:
 			dialogue.once("lamp")
+
+
+## Fresh ice appears at random open spots (GameState.spawn_ice) and melts away when used up.
+func _setup_ice_spawns() -> void:
+	var state := get_node_or_null("/root/GameState")
+	if state == null:
+		return
+	if state.ice_spawn_spots.is_empty():
+		state.ice_spawn_spots = _open_spots()
+	for id: String in state.ice_spawns:
+		_add_spawned_ice(id, false)
+	state.ice_spawned.connect(_add_spawned_ice.bind(true))
+	state.ice_removed.connect(_remove_spawned_ice)
+
+
+## Floor tile centres with no rock around and nothing built or placed close by.
+func _open_spots() -> Array:
+	var walls := get_node("Walls") as TileMapLayer
+	var taken: Array[Vector2] = []
+	for n in find_children("*", "Node2D", true, false):
+		taken.append((n as Node2D).global_position)
+	var spots := []
+	for y in range(FLOOR.position.y + 1, FLOOR.end.y - 1):
+		for x in range(FLOOR.position.x + 1, FLOOR.end.x - 1):
+			var t := Vector2i(x, y)
+			if SHIP_AREA.has_point(t):
+				continue
+			var open := true
+			for d: Vector2i in [Vector2i.ZERO, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+				open = open and walls.get_cell_source_id(t + d) == -1
+			var pos := _tile_centre(t)
+			if open and taken.all(func(p: Vector2) -> bool: return p.distance_to(pos) > 22.0):
+				spots.append(pos)
+	return spots
+
+
+func _add_spawned_ice(id: String, animate: bool) -> void:
+	var state := get_node("/root/GameState")
+	var s := _place_sprite(get_node("Entities/Nodes"), id.get_file(), TEX_ICE, NODE_SCALE, state.ice_spawns[id],
+		RESOURCE_NODE_SCRIPT, {"kind": "ice", "charges_left": Config.NODE_CHARGES, "node_id": id})
+	if animate:
+		s.scale = NODE_SCALE * 0.1
+		s.create_tween().tween_property(s, "scale", NODE_SCALE, 0.6).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+func _remove_spawned_ice(id: String) -> void:
+	var s := get_node_or_null("Entities/Nodes/" + id.get_file()) as Node2D
+	if s == null:
+		return
+	s.name = String(s.name) + "_melting"
+	s.remove_from_group("interactables")
+	var tween := s.create_tween()
+	tween.tween_property(s, "modulate:a", 0.0, 1.2)
+	tween.tween_callback(s.queue_free)
 
 
 ## Coming back out of a cave: the player stands in front of that cave's entrance.

@@ -294,8 +294,10 @@ func _make_book() -> void:
 
 	# Left page: what it is.
 	var left := VBoxContainer.new()
-	left.position = BOOK_SIZE * Vector2(0.085, 0.1)
-	left.size = BOOK_SIZE * Vector2(0.37, 0.64)
+	left.position = BOOK_SIZE * Vector2(0.09, 0.15)
+	left.size = BOOK_SIZE * Vector2(0.36, 0.62)
+	left.alignment = BoxContainer.ALIGNMENT_CENTER
+	left.add_theme_constant_override("separation", 6)
 	content.add_child(left)
 	section = _label("", 12)
 	section.name = "Section"
@@ -325,15 +327,17 @@ func _make_book() -> void:
 
 	# Right page: what it costs, and the Build button.
 	var right := VBoxContainer.new()
-	right.position = BOOK_SIZE * Vector2(0.545, 0.1)
-	right.size = BOOK_SIZE * Vector2(0.37, 0.64)
+	right.position = BOOK_SIZE * Vector2(0.55, 0.15)
+	right.size = BOOK_SIZE * Vector2(0.36, 0.62)
+	right.alignment = BoxContainer.ALIGNMENT_CENTER
+	right.add_theme_constant_override("separation", 10)
 	content.add_child(right)
 	var heading := _label("Required Materials", 17)
 	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	right.add_child(heading)
 	materials = VBoxContainer.new()
 	materials.name = "Materials"
-	materials.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	materials.add_theme_constant_override("separation", 4)
 	right.add_child(materials)
 	problem = _label("", 12)
 	problem.name = "Problem"
@@ -343,6 +347,8 @@ func _make_book() -> void:
 	right.add_child(problem)
 	build = _button("BUILD", _on_build)
 	build.name = "Build"
+	build.custom_minimum_size.x = 160
+	build.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	right.add_child(build)
 	var nav := HBoxContainer.new()
 	nav.alignment = BoxContainer.ALIGNMENT_CENTER

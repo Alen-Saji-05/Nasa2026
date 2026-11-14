@@ -27,6 +27,7 @@ func _ready() -> void:
 		key.physical_keycode = KEY_E
 		InputMap.action_add_event(ACTION, key)
 	_make_prompt()
+	GameState.game_ended.connect(func(_reason: String) -> void: _prompt.hide())
 
 
 func _process(delta: float) -> void:

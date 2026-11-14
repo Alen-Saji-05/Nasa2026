@@ -158,7 +158,7 @@ func _tick(delta: float) -> void:
 		_hurt_time += delta
 		if _hurt_time >= Config.HAZARD_DAMAGE_EVERY:
 			_hurt_time -= Config.HAZARD_DAMAGE_EVERY
-			GameState.damage(hit)
+			GameState.damage(hit, true, "radiation" if radiation == "active" else "storm")
 			_hurt_effect(hit)
 	else:
 		_hurt_time = minf(_hurt_time, Config.HAZARD_DAMAGE_EVERY * 0.5)
@@ -209,6 +209,7 @@ func _set_storm(stage: String, seconds: float) -> void:
 			_after_hazard()
 		_:
 			GameState.say("The dust storm has passed.")
+			GameState.spawn_ice()                   # the wind blew the dust off some ice
 	changed.emit()
 
 

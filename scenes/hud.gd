@@ -251,10 +251,24 @@ func _set_blink(bar: CanvasItem, on: bool) -> void:
 
 # --- Game over (simple version; the real end screen comes later) ---
 
+## First the ending animation for how the game ended (endings.gd), then the panel.
 func _on_game_ended(reason: String) -> void:
-	game_over_label.text = "%s\n\nPress R to restart" % reason
-	game_over_panel.show()
 	get_tree().paused = true
+	for child in get_children():
+		if child != game_over_panel and child is CanvasItem:
+			(child as CanvasItem).hide()          # a clean view for the ending
+	var endings := preload("res://scripts/endings.gd").new()
+	endings.name = "Endings"
+	add_child(endings)
+	move_child(endings, game_over_panel.get_index())
+	await endings.play(GameState.death_cause)
+	if not GameState.game_over:
+		return                                   # restarted meanwhile
+	if GameState.game_won:
+		game_over_label.text = "MISSION COMPLETE\n\n%s\n\nPress R to play again" % reason
+	else:
+		game_over_label.text = "%s\n\nPress R to restart" % reason
+	game_over_panel.show()
 
 
 func _unhandled_input(event: InputEvent) -> void:

@@ -210,6 +210,18 @@ func _run() -> void:
 	_check("all six installed: the ship shows its repaired sprite and the game is won ('%s')" % _gs.game_over_reason,
 		_gs.game_won and _gs.ship_repaired() and ship_sprite.texture.resource_path.ends_with("Repaired_Spaceship.png"))
 	await _shot("repaired.png")
+	var ship: Node2D = current_scene.get_node("Entities/BrokenRocket")
+	var ground_y := ship.position.y
+	var endings: Node = current_scene.get_node("UI/HUD/Endings")
+	await create_timer(5.5, true).timeout
+	await _shot("launch.png")
+	_check("the launch: the player boards, the ship lifts off on fire and smoke (%.0f px up)" % (ground_y - ship.position.y),
+		player.modulate.a < 0.1 and ship.position.y < ground_y - 20.0 and ship.has_node("Flame"))
+	var t0 := Time.get_ticks_msec()
+	while not endings.finished and Time.get_ticks_msec() - t0 < 10000:
+		await process_frame
+	var label: Label = current_scene.get_node("UI/HUD/GameOver/Label")
+	_check("then 'MISSION COMPLETE'", current_scene.get_node("UI/HUD/GameOver").visible and label.text.begins_with("MISSION COMPLETE"))
 
 	_gs.reset()
 	paused = false

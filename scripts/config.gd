@@ -97,6 +97,11 @@ const MIN_REWARD_DISTANCE := 0.4             # nearest deposit >= this share of 
 const BUILD_PAD_COUNT := 10                  # marked squares for machines (the launch pad is extra)
 const SURFACE_METAL_NODES := 2               # starter deposits on the surface; the rest is in the caves
 const SURFACE_ICE_NODES := 1
+# Ice is dynamic: used-up deposits refill a little, and fresh ones appear elsewhere on the surface.
+const ICE_REGEN_SECONDS := 90.0              # an empty ice deposit refills after this long ...
+const ICE_REGEN_CHARGES := 2                 # ... with this many uses (less than new)
+const ICE_SPAWN_SECONDS := 60.0              # how often fresh ice appears somewhere on the surface
+const ICE_SPAWN_MAX := 3                     # at most this many fresh deposits at the same time
 const STARTER_NODE_MIN_WALK := 15            # tiles a starter deposit must be from the spawn, on foot
 const BASE_SAFE_RADIUS := 9                  # tiles around the hab with no craters
 const SURFACE_MAX_EMPTY_SQUARE := 3          # "no dead space": no plain empty floor bigger than 3x3 tiles

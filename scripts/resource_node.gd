@@ -28,7 +28,19 @@ func _ready() -> void:
 	add_to_group(Interactor.GROUP)
 	if node_id != "":
 		charges_left = GameState.node_charges.get(node_id, charges_left)
+		GameState.deposits_changed.connect(_reload)
 	_refresh()
+
+
+## Ice refilled while the player was here: grows back with a little pop.
+func _reload() -> void:
+	var was_empty := is_empty()
+	charges_left = GameState.node_charges.get(node_id, charges_left)
+	_refresh()
+	if was_empty and not is_empty():
+		var base := scale
+		scale = base * 0.3
+		create_tween().tween_property(self, "scale", base, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
 # --- Used by the player's Interactor (E key) ---
@@ -83,6 +95,8 @@ func harvest() -> String:
 	if node_id != "":
 		GameState.node_charges[node_id] = charges_left
 	_refresh()
+	if is_empty():
+		GameState.deposit_emptied(node_id, kind)
 	return text
 
 

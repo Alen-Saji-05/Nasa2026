@@ -97,6 +97,42 @@ func _run() -> void:
 	var hud: Control = current_scene.get_node("UI/HUD")
 	_check("the HUD shows a health bar and no metal counter", hud.has_node("Bars/HealthRow") and not hud.has_node("Bars/MetalRow"))
 
+	# --- ice: used-up deposits refill a little, fresh ones appear elsewhere ---
+	var spots: Array = _gs.ice_spawn_spots
+	_check("the world lists %d open spots for fresh ice" % spots.size(), spots.size() > 50)
+	var fixed: Node = null
+	for n in get_nodes_in_group("resource_nodes"):
+		if str(n.get("node_id")).begins_with("surface/Ice"):
+			fixed = n
+	_gs.water = 0.0
+	for i in Config.NODE_CHARGES:
+		fixed.harvest()
+	_check("a surface ice deposit can be used up", fixed.is_empty())
+	_gs.sol_elapsed_seconds = 0.0
+	_gs.water = Config.WATER_START
+	_step(Config.ICE_REGEN_SECONDS - 1.0)
+	var still_empty: bool = fixed.is_empty()
+	_step(2.0)
+	_check("%d s later it refills with a smaller amount (%d uses)" % [Config.ICE_REGEN_SECONDS, fixed.get("charges_left")],
+		still_empty and fixed.get("charges_left") == Config.ICE_REGEN_CHARGES)
+	var ids: Array[String] = []
+	for i in Config.ICE_SPAWN_MAX + 1:
+		ids.append(_gs.spawn_ice())
+	await _wait(0.7)
+	var fresh: Node = current_scene.get_node_or_null("Entities/Nodes/" + ids[0].get_file())
+	_check("fresh ice appears at %d different open spots, full, at most %d at once" % [Config.ICE_SPAWN_MAX, Config.ICE_SPAWN_MAX],
+		fresh != null and fresh.get("charges_left") == Config.NODE_CHARGES and ids[Config.ICE_SPAWN_MAX] == ""
+		and _gs.ice_spawns.size() == Config.ICE_SPAWN_MAX and spots.has(_gs.ice_spawns[ids[1]]))
+	_gs.water = 0.0
+	for i in Config.NODE_CHARGES:
+		fresh.harvest()
+	await _wait(1.5)
+	_check("used up, a fresh deposit melts away and makes room for a new one somewhere else",
+		not is_instance_valid(fresh) and not _gs.ice_spawns.has(ids[0]) and _gs.spawn_ice() != "")
+	_gs.water = Config.WATER_START
+	_gs.sol_elapsed_seconds = 0.0
+	_dialogue.clear()
+
 	# --- hunger and the food hints ---
 	_gs.sol_elapsed_seconds = 10.0
 	_gs.health = Config.HUNGER_HINT_1 + 1.0
@@ -259,9 +295,25 @@ func _run() -> void:
 	_hand().use()
 	_check("and out again", await _until(func() -> bool: return _in_scene(Config.WORLD_SCENE)))
 
-	# --- zero health and a new game ---
-	_gs.damage(_gs.health)
-	_check("at zero health the game is over: '%s'" % _gs.game_over_reason, _gs.game_over and _gs.game_over_reason == "Your health ran out")
+	# --- deaths: each cause has its own reason and ending animation ---
+	_gs.set_process(true)
+	_gs.damage(_gs.health, true, "radiation")
+	await process_frame
+	var endings: Node = current_scene.get_node("UI/HUD/Endings")
+	var panel: Control = current_scene.get_node("UI/HUD/GameOver")
+	_check("killed by radiation: '%s', the radiation ending plays first, no panel yet" % _gs.game_over_reason,
+		_gs.game_over and _gs.death_cause == "radiation" and _gs.game_over_reason == "Killed by radiation" and not panel.visible)
+	await _until(func() -> bool: return endings.finished, 10.0)
+	await _shot("death_radiation.png")
+	_check("after the animation the game-over panel shows", panel.visible and _player().modulate.a < 0.1)
+	var reasons := {"hunger": "Starved - you ran out of food", "storm": "Lost in the dust storm"}
+	var ok := true
+	for cause: String in reasons:
+		_gs.reset()
+		_gs.damage(_gs.health, true, cause)
+		ok = ok and _gs.death_cause == cause and _gs.game_over_reason == reasons[cause]
+	_check("starving and the dust storm have their own reasons and endings", ok)
+	_gs.set_process(false)
 	_hz.trigger("storm")
 	_gs.reset()
 	paused = false

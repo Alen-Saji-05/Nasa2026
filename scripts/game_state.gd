@@ -29,6 +29,11 @@ signal day_night_changed(sol: int, sun_level: float)
 signal health_changed(value: float, hurt: bool)
 ## A hint points at something: "health", "oxygen", "water", "power", "wreck" or "book:<page id>".
 signal highlight(target: String)
+## Ice deposits refilled (resource_node.gd reloads its uses).
+signal deposits_changed
+## A fresh ice deposit appeared on the surface / a used-up one melted away (world_gen.gd).
+signal ice_spawned(id: String)
+signal ice_removed(id: String)
 
 var sol_elapsed_seconds: float = 0.0
 var sol_number: int = 1
@@ -45,6 +50,16 @@ var meals: int = 0
 ## True while the player is inside the Emergency Shelter (scenes/Shelter.tscn).
 var in_shelter: bool = false
 var _grow_time := 0.0
+## Why the game ended, for the ending animation: "oxygen", "water", "hunger",
+## "radiation", "storm", "time" or "won".
+var death_cause: String = ""
+## Ice: empty deposit id -> time it ran empty; fresh surface deposits id -> position.
+var ice_empty_since: Dictionary = {}
+var ice_spawns: Dictionary = {}
+## Open surface spots where fresh ice can appear (world_gen.gd fills this).
+var ice_spawn_spots: Array = []
+var _ice_time := 0.0
+var _ice_serial := 0
 
 var zero_oxygen_time: float = 0.0
 var zero_water_time: float = 0.0
@@ -113,7 +128,7 @@ func _process(delta: float) -> void:
 	_run_production(delta)
 	_run_o2_generator(delta)
 
-	damage(Config.HUNGER_PER_SOL / Config.SOL_SECONDS * delta, false)
+	damage(Config.HUNGER_PER_SOL / Config.SOL_SECONDS * delta, false, "hunger")
 	if game_over:
 		return
 	if oxygen > 0.0:
@@ -128,6 +143,7 @@ func _process(delta: float) -> void:
 		zero_oxygen_time += delta
 		if zero_oxygen_time >= Config.O2_ZERO_GRACE:
 			oxygen_depleted.emit()
+			death_cause = "oxygen"
 			_end_game("Out of oxygen")
 			return
 	else:
@@ -136,6 +152,7 @@ func _process(delta: float) -> void:
 	if water <= 0.0:
 		zero_water_time += delta
 		if zero_water_time >= Config.WATER_ZERO_GRACE:
+			death_cause = "water"
 			_end_game("Out of water")
 	else:
 		zero_water_time = 0.0
@@ -160,13 +177,15 @@ func add_oxygen(amount: float) -> void:
 # --- Health and food ---
 
 ## Takes health. `hurt` = a real hit (radiation, storm): the HUD flashes red.
-func damage(amount: float, hurt: bool = true) -> void:
+func damage(amount: float, hurt: bool = true, cause: String = "radiation") -> void:
 	if game_over or amount <= 0.0:
 		return
 	health = maxf(0.0, health - amount)
 	health_changed.emit(health, hurt)
 	if health <= 0.0:
-		_end_game("Your health ran out")
+		death_cause = cause
+		_end_game({"hunger": "Starved - you ran out of food", "storm": "Lost in the dust storm",
+			"radiation": "Killed by radiation"}.get(cause, "Your health ran out"))
 
 
 func heal(amount: float) -> void:
@@ -430,11 +449,55 @@ func _run_production(delta: float) -> void:
 		while _grow_time >= Config.GREENHOUSE_SECONDS:
 			_grow_time -= Config.GREENHOUSE_SECONDS
 			machine_output["potato"] = machine_output.get("potato", 0) + 1
+	_run_ice(delta)
 	if co2_capture_working():
 		_co2_time += delta
 		while _co2_time >= Config.CO2_CAPTURE_SECONDS:
 			_co2_time -= Config.CO2_CAPTURE_SECONDS
 			machine_output["co2"] = machine_output.get("co2", 0) + 1
+
+
+# --- Ice: refills and fresh deposits ---
+
+## A deposit ran empty. Fixed ice deposits refill a little later; a fresh one melts away.
+func deposit_emptied(node_id: String, kind: String) -> void:
+	if kind != "ice" or node_id == "":
+		return
+	if ice_spawns.has(node_id):
+		ice_spawns.erase(node_id)
+		node_charges.erase(node_id)
+		ice_removed.emit(node_id)
+	else:
+		ice_empty_since[node_id] = sol_elapsed_seconds
+
+
+func _run_ice(delta: float) -> void:
+	for id: String in ice_empty_since.keys():
+		if sol_elapsed_seconds - float(ice_empty_since[id]) >= Config.ICE_REGEN_SECONDS:
+			ice_empty_since.erase(id)
+			node_charges[id] = Config.ICE_REGEN_CHARGES
+			deposits_changed.emit()
+	_ice_time += delta
+	if _ice_time >= Config.ICE_SPAWN_SECONDS:
+		_ice_time = 0.0
+		spawn_ice()
+
+
+## Fresh ice (full) at a random open surface spot away from the others. Returns its id or "".
+func spawn_ice() -> String:
+	if ice_spawn_spots.is_empty() or ice_spawns.size() >= Config.ICE_SPAWN_MAX:
+		return ""
+	var spot: Vector2 = ice_spawn_spots.pick_random()
+	for attempt in 30:
+		if ice_spawns.values().all(func(p: Vector2) -> bool: return p.distance_to(spot) > 64.0):
+			break
+		spot = ice_spawn_spots.pick_random()
+	_ice_serial += 1
+	var id := "surface/IceNew%03d" % _ice_serial
+	ice_spawns[id] = spot
+	ice_spawned.emit(id)
+	say("Fresh ice has been exposed somewhere on the surface!")
+	return id
 
 
 ## True if the inventory holds everything in `cost` (item id -> amount).
@@ -559,6 +622,7 @@ func win(reason: String) -> void:
 	if game_over:
 		return
 	game_won = true
+	death_cause = "won"
 	_end_game(reason)
 
 
@@ -598,6 +662,10 @@ func reset() -> void:
 	zero_water_time = 0.0
 	health = Config.HEALTH_MAX
 	meals = 0
+	death_cause = ""
+	ice_empty_since.clear()
+	ice_spawns.clear()
+	_ice_time = 0.0
 	in_shelter = false
 	_grow_time = 0.0
 	game_over = false
@@ -674,6 +742,7 @@ func _update_day_night(delta: float) -> void:
 	sol_number = int(floor(sol_elapsed_seconds / Config.SOL_SECONDS)) + 1
 	if sol_number > Config.TOTAL_SOLS:
 		sol_number = Config.TOTAL_SOLS
+		death_cause = "time"
 		_end_game("Return window closed")
 		return
 
