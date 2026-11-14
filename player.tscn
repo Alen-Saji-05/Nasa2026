@@ -1,7 +1,6 @@
 [gd_scene format=3 uid="uid://dnlf03xaufkq3"]
 
 [ext_resource type="Texture2D" uid="uid://bxmyieugynwd5" path="res://art/astronaut.png" id="1_4flbx"]
-[ext_resource type="Script" path="res://scripts/harvester.gd" id="2_harvest"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_onrkg"]
 atlas = ExtResource("1_4flbx")
@@ -85,7 +84,7 @@ animations = [{
 }]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_ki23o"]
-radius = 60.0
+radius = 16.0
 
 [node name="player" type="CharacterBody2D" unique_id=1170592067]
 scale = Vector2(0.25, 0.25)
@@ -95,7 +94,6 @@ sprite_frames = SubResource("SpriteFrames_ki23o")
 animation = &"side"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1785823321]
-position = Vector2(0, 115)
 shape = SubResource("CircleShape2D_ki23o")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1289354307]
@@ -104,6 +102,3 @@ limit_top = 0
 limit_right = 3000
 limit_bottom = 2000
 position_smoothing_enabled = true
-
-[node name="Harvester" type="Node2D" parent="."]
-script = ExtResource("2_harvest")
