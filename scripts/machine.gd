@@ -167,17 +167,26 @@ func _art_size() -> Vector2:
 func launch() -> void:
 	_launching = true
 	process_mode = Node.PROCESS_MODE_ALWAYS
+
 	var tree := get_tree()
 	tree.paused = true
+
+	var player := tree.current_scene.get_node_or_null("Entities/Player")
+	if player:
+		player.visible = false
+
 	for n in [3, 2, 1]:
 		GameState.say("Ignition in %d..." % n)
 		await tree.create_timer(1.0).timeout
+
 	GameState.say("Lift-off!")
 	sprite.play("running")
 	add_child(_exhaust())
+
 	var tween := create_tween()
 	tween.tween_property(self, "position:y", position.y - 260.0, 2.5).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	await tween.finished
+
 	GameState.win("Launch successful! You are on your way home.")
 
 

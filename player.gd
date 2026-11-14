@@ -4,7 +4,7 @@ extends CharacterBody2D
 ## `collider` is the thing that was hit, `impact_speed` how fast we hit it (px/s).
 signal bumped(collider: Object, impact_speed: float)
 
-@export var speed: float = 250.0
+@export var speed: float = 100.0
 
 @export_group("Bounce")
 ## How much of the impact is thrown back. 0 = no bounce, 1 = full rebound.
