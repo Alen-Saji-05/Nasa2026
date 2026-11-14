@@ -1,0 +1,15 @@
+[gd_scene format=3 uid="uid://bt8w3h0qibfxt"]
+
+[ext_resource type="PackedScene" uid="uid://dnlf03xaufkq3" path="res://player.tscn" id="1_0xm2m"]
+[ext_resource type="PackedScene" uid="uid://8867we6paet6" path="res://color_rect.tscn" id="1_h2yge"]
+[ext_resource type="Script" uid="uid://dpgfuytdcui2g" path="res://player.gd" id="2_h2yge"]
+
+[node name="main" type="Node2D" unique_id=782005643]
+
+[node name="ColorRect" parent="." unique_id=1979370118 instance=ExtResource("1_h2yge")]
+offset_right = 1152.0
+offset_bottom = 648.0
+
+[node name="player" parent="." unique_id=1170592067 instance=ExtResource("1_0xm2m")]
+position = Vector2(655, 215)
+script = ExtResource("2_h2yge")

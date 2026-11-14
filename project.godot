@@ -11,6 +11,7 @@ config_version=5
 [application]
 
 config/name="Nasa"
+run/main_scene="uid://bt8w3h0qibfxt"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
 
