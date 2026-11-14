@@ -13,7 +13,7 @@ const SOL_SECONDS := 15.0                    # 1 sol (Mars day) in real seconds
 # --- Oxygen ---
 const O2_START := 100.0
 const O2_MAX := 100.0
-const O2_DRAIN_PER_SOL := 6.0
+const O2_DRAIN_PER_SOL := 2.0
 const O2_DRAIN_PER_SEC := O2_DRAIN_PER_SOL / SOL_SECONDS   # 0.4 per second
 const O2_ZERO_GRACE := 6.0                   # seconds at 0 before "Out of oxygen"
 const O2_HARVEST_COST := 1.0                 # O2 spent per harvest (metal or ice)

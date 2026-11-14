@@ -1,4 +1,4 @@
-[gd_scene format=4 uid="uid://byvg5tsijk2c4"]
+[gd_scene format=4 uid="uid://bg6ln4i3862xb"]
 
 [ext_resource type="Script" uid="uid://roaac8m72454" path="res://scripts/world/world_gen.gd" id="1_gen"]
 [ext_resource type="TileSet" uid="uid://y15sbxmdnnqe" path="res://art/tilesets/mars_tileset.tres" id="2_tiles"]
@@ -839,7 +839,7 @@ texture = ExtResource("11_dwmkc")
 
 [node name="Player" parent="Entities" unique_id=1137681477 instance=ExtResource("3_player")]
 position = Vector2(376, 280)
-scale = Vector2(0.05, 0.05)
+scale = Vector2(0.075, 0.075)
 script = ExtResource("4_pscript")
 
 [node name="BrokenRocket" type="StaticBody2D" parent="Entities" unique_id=658827004]

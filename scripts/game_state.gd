@@ -18,6 +18,10 @@ signal location_changed(place: String)
 signal machines_changed
 ## Power made, power used or the battery changed.
 signal power_changed
+signal day_night_changed(sol: int, sun_level: float)
+
+var sol_elapsed_seconds: float = 0.0
+var sol_number: int = 1
 
 var oxygen: float = Config.O2_START
 var water: float = Config.WATER_START
@@ -63,6 +67,8 @@ var game_won: bool = false
 func _process(delta: float) -> void:
 	if game_over:
 		return
+
+	_update_day_night(delta)
 
 	_run_power(delta)
 	_run_o2_generator(delta)
@@ -303,6 +309,8 @@ func reset() -> void:
 	battery_charge = Config.HAB_BATTERY_CAPACITY
 	power_made = 0.0
 	power_used = 0.0
+	sol_elapsed_seconds = 0.0
+	sol_number = 1
 	game_won = false
 	oxygen_changed.emit(oxygen)
 	water_changed.emit(water, water_limit)
@@ -331,3 +339,24 @@ func _run_o2_generator(delta: float) -> void:
 		return
 	water = maxf(0.0, water - Config.O2_GEN_WATER_PER_SEC * delta)
 	oxygen = minf(Config.O2_MAX, oxygen + Config.O2_GEN_RATE * delta)
+
+
+func _update_day_night(delta: float) -> void:
+	sol_elapsed_seconds += delta
+
+	sol_number = int(floor(sol_elapsed_seconds / Config.SOL_SECONDS)) + 1
+
+	var progress := fmod(sol_elapsed_seconds, Config.SOL_SECONDS) / Config.SOL_SECONDS
+
+	if progress < 0.1:
+		var t := progress / 0.1
+		sun = t * t * (3.0 - 2.0 * t)
+	elif progress < 0.5:
+		sun = 1.0
+	elif progress < 0.6:
+		var t := (progress - 0.5) / 0.1
+		sun = 1.0 - t * t * (3.0 - 2.0 * t)
+	else:
+		sun = 0.0
+
+	day_night_changed.emit(sol_number, sun)

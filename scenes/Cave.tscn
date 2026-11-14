@@ -1,42 +1,42 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://dbanrvq7l42of"]
 
-[ext_resource type="Script" path="res://scripts/world/cave.gd" id="1_cave"]
-[ext_resource type="TileSet" path="res://art/tilesets/mars_tileset.tres" id="2_tiles"]
-[ext_resource type="Script" path="res://scripts/new_script.gd" id="3_colliders"]
-[ext_resource type="PackedScene" path="res://player.tscn" id="4_player"]
-[ext_resource type="Script" path="res://player.gd" id="5_pscript"]
+[ext_resource type="Script" uid="uid://b1e4byrptwvu1" path="res://scripts/world/cave.gd" id="1_cave"]
+[ext_resource type="TileSet" uid="uid://y15sbxmdnnqe" path="res://art/tilesets/mars_tileset.tres" id="2_tiles"]
+[ext_resource type="Script" uid="uid://b7ngvr740gh3k" path="res://scripts/new_script.gd" id="3_colliders"]
+[ext_resource type="PackedScene" uid="uid://dnlf03xaufkq3" path="res://player.tscn" id="4_player"]
+[ext_resource type="Script" uid="uid://dpgfuytdcui2g" path="res://player.gd" id="5_pscript"]
 [ext_resource type="PackedScene" path="res://scenes/HUD.tscn" id="6_hud"]
 
-[node name="Cave" type="Node2D"]
+[node name="Cave" type="Node2D" unique_id=1013642652]
 script = ExtResource("1_cave")
 
-[node name="Ground" type="TileMapLayer" parent="."]
+[node name="Ground" type="TileMapLayer" parent="." unique_id=489492543]
 tile_set = ExtResource("2_tiles")
 
-[node name="GroundDecor" type="Node2D" parent="."]
+[node name="GroundDecor" type="Node2D" parent="." unique_id=296062791]
 
-[node name="Walls" type="TileMapLayer" parent="."]
+[node name="Walls" type="TileMapLayer" parent="." unique_id=198710803]
 tile_set = ExtResource("2_tiles")
 
-[node name="Cliffs" type="Node2D" parent="."]
+[node name="Cliffs" type="Node2D" parent="." unique_id=850899613]
 
-[node name="Doors" type="Node2D" parent="."]
+[node name="Doors" type="Node2D" parent="." unique_id=125440832]
 
-[node name="Entities" type="Node2D" parent="."]
+[node name="Entities" type="Node2D" parent="." unique_id=1322458952]
 y_sort_enabled = true
 
-[node name="Nodes" type="Node2D" parent="Entities"]
+[node name="Nodes" type="Node2D" parent="Entities" unique_id=845243208]
 y_sort_enabled = true
 script = ExtResource("3_colliders")
 
-[node name="Decor" type="Node2D" parent="Entities"]
+[node name="Decor" type="Node2D" parent="Entities" unique_id=2064953452]
 y_sort_enabled = true
 script = ExtResource("3_colliders")
 
-[node name="Player" parent="Entities" instance=ExtResource("4_player")]
-scale = Vector2(0.1, 0.1)
+[node name="Player" parent="Entities" unique_id=1883134873 instance=ExtResource("4_player")]
+scale = Vector2(0.05, 0.05)
 script = ExtResource("5_pscript")
 
-[node name="Darkness" type="CanvasModulate" parent="."]
+[node name="Darkness" type="CanvasModulate" parent="." unique_id=1813939875]
 
-[node name="UI" parent="." instance=ExtResource("6_hud")]
+[node name="UI" parent="." unique_id=1107448241 instance=ExtResource("6_hud")]
