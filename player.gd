@@ -1,29 +1,38 @@
+
 extends CharacterBody2D
+
 @export var speed: float = 250.0
 
-func _physics_process(_delta: float) -> void:
+@onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 
+
+func _physics_process(_delta: float) -> void:
 	var direction = Vector2.ZERO
 
-	if Input.is_key_pressed(KEY_W):
-		direction.y -= 1
-
-	if Input.is_key_pressed(KEY_S):
-		direction.y += 1
-
-	if Input.is_key_pressed(KEY_A):
-		direction.x -= 1
-
-	if Input.is_key_pressed(KEY_D):
-		direction.x += 1
-
-	direction = direction.normalized()
-
-	velocity = direction * speed
-	move_and_slide()
+	direction.x = Input.get_axis("ui_left", "ui_right")
+	direction.y = Input.get_axis("ui_up", "ui_down")
 
 	if direction != Vector2.ZERO:
-		print("Moving: ", direction)
-func _input(event):
-	if event is InputEventKey and event.pressed:
-		print("Key detected: ", event.as_text())
+		velocity = direction.normalized() * speed
+		play_movement_animation(direction)
+	else:
+		velocity = Vector2.ZERO
+		animated_sprite.stop()
+		animated_sprite.frame = 0
+
+	move_and_slide()
+
+
+func play_movement_animation(direction: Vector2) -> void:
+
+	if abs(direction.x) > abs(direction.y):
+		animated_sprite.play("side")
+		animated_sprite.flip_h = direction.x > 0
+
+	elif direction.y < 0:
+		animated_sprite.play("back")
+		animated_sprite.flip_h = false
+
+	else:
+		animated_sprite.play("front")
+		animated_sprite.flip_h = false

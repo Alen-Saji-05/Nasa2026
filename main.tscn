@@ -7,8 +7,8 @@
 [node name="main" type="Node2D" unique_id=782005643]
 
 [node name="ColorRect" parent="." unique_id=1979370118 instance=ExtResource("1_h2yge")]
-offset_right = 1152.0
-offset_bottom = 648.0
+offset_right = 3000.0
+offset_bottom = 2000.0
 
 [node name="player" parent="." unique_id=1170592067 instance=ExtResource("1_0xm2m")]
 position = Vector2(655, 215)
