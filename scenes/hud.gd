@@ -256,7 +256,7 @@ func _set_blink(bar: CanvasItem, on: bool) -> void:
 # --- Game over (simple version; the real end screen comes later) ---
 
 ## First the ending animation for how the game ended (endings.gd), then the panel.
-func _on_game_ended(reason: String) -> void:
+func _on_game_ended(_reason: String) -> void:
 	get_tree().paused = true
 	for child in get_children():
 		if child != game_over_panel and child is CanvasItem:
@@ -268,13 +268,13 @@ func _on_game_ended(reason: String) -> void:
 	await endings.play(GameState.death_cause)
 	if not GameState.game_over:
 		return                                   # restarted meanwhile
-	if GameState.game_won:
-		game_over_label.text = "MISSION COMPLETE\n\n%s\n\nPress R to play again" % reason
-		game_over_panel.show()
-		return
-	# A death: the ending left its death screen up; only "Press R" goes on top of it.
+	# The ending left its picture up (THE END or a death screen); only "Press R" goes on top.
+	_press_r("Press R for title screen" if GameState.game_won else "Press R to restart")
+
+
+func _press_r(text: String) -> void:
 	game_over_panel.color = Color(0, 0, 0, 0)
-	game_over_label.text = "Press R to restart"
+	game_over_label.text = text
 	game_over_label.add_theme_font_override("font", preload("res://art/fonts/PixelifySans.ttf"))
 	game_over_label.add_theme_font_size_override("font_size", 30)
 	game_over_label.add_theme_color_override("font_color", Color(1.0, 0.93, 0.8))

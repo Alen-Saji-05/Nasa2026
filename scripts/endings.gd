@@ -15,8 +15,27 @@ const CARDS := {
 	"time": "res://art/death_Screens/Retro Pixel Death Screen_ You Didn’t Make It in Time.png",
 }
 
+## The win: "THE END" rises through the stars, one frame after the other.
+const END_FRAMES := [
+	"res://art/end_screen/frame_01.png", "res://art/end_screen/frame_02.png",
+	"res://art/end_screen/frame_03.png", "res://art/end_screen/frame_04.png",
+	"res://art/end_screen/frame_05.png", "res://art/end_screen/frame_06.png",
+]
+const FRAME_SECONDS := 0.4
+const ASTRONAUT := preload("res://art/astronaut.png")
+## How fast the astronaut drifts at most (share of the screen width per second).
+const FLOAT_SPEED := 0.04
+
 ## True once the last animation has finished (tests read it).
 var finished := false
+
+# The astronaut floating in space after the win (see _process).
+var _floater: TextureRect
+var _drift := Vector2.ZERO
+var _goal := Vector2.ZERO
+var _spin := 0.0
+var _spin_goal := 0.3
+var _next_goal := 0.0
 
 
 func _ready() -> void:
@@ -48,7 +67,75 @@ func play(cause: String) -> void:
 		await _wait(0.5)
 	if CARDS.has(cause):
 		await _card(cause)
+	elif cause == "won":
+		await _the_end()
 	finished = true
+
+
+# --- The win: THE END, and an astronaut adrift among the stars ---
+
+func _the_end() -> void:
+	Dialogue.clear()
+	var black := _veil(Color.BLACK)
+	var dark := create_tween()
+	dark.tween_property(black, "color:a", 1.0, 0.8)
+	await dark.finished
+	var card := TextureRect.new()
+	card.name = "TheEnd"
+	card.texture = load(END_FRAMES[0])
+	card.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	card.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.modulate.a = 0.0
+	add_child(card)
+	card.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_float_astronaut()
+	var t := create_tween()
+	t.tween_property(card, "modulate:a", 1.0, 0.6)
+	await t.finished
+	for path: String in END_FRAMES.slice(1):
+		await _wait(FRAME_SECONDS)
+		card.texture = load(path)
+	await _wait(0.8)
+
+
+## The astronaut (front view from art/astronaut.png) drifts in from the left and
+## then wanders slowly and tumbles, like someone lost in space.
+func _float_astronaut() -> void:
+	var face := AtlasTexture.new()
+	face.atlas = ASTRONAUT
+	face.region = Rect2(0, 0, ASTRONAUT.get_width() / 3.0, ASTRONAUT.get_height() / 3.0)
+	_floater = TextureRect.new()
+	_floater.name = "Astronaut"
+	_floater.texture = face
+	_floater.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_floater.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_floater.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_floater.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var side := size.y * 0.2
+	_floater.size = Vector2(side, side)
+	_floater.pivot_offset = _floater.size * 0.5
+	_floater.position = Vector2(-side * 1.2, size.y * 0.55)
+	_floater.rotation = randf_range(-0.5, 0.5)
+	add_child(_floater)
+	_drift = Vector2(size.x * FLOAT_SPEED, 0.0)
+	_next_goal = 0.0
+
+
+func _process(delta: float) -> void:
+	if _floater == null:
+		return
+	_next_goal -= delta
+	if _next_goal <= 0.0:                        # a new slow wander every few seconds
+		_next_goal = randf_range(3.0, 6.0)
+		_goal = Vector2(randf_range(0.12, 0.88) * size.x, randf_range(0.42, 0.68) * size.y)
+		_spin_goal = randf_range(0.2, 0.6) * (1.0 if randf() < 0.5 else -1.0)
+	var centre := _floater.position + _floater.size * 0.5
+	var want := ((_goal - centre) * 0.25).limit_length(size.x * FLOAT_SPEED)
+	_drift = _drift.lerp(want, delta * 0.4)
+	_floater.position += _drift * delta
+	_spin = lerpf(_spin, _spin_goal, delta * 0.3)
+	_floater.rotation += _spin * delta
 
 
 # --- The death screen: each one arrives in its own way ---

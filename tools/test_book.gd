@@ -224,7 +224,15 @@ func _run() -> void:
 	while not endings.finished and Time.get_ticks_msec() - t0 < 10000:
 		await process_frame
 	var label: Label = current_scene.get_node("UI/HUD/GameOver/Label")
-	_check("then 'MISSION COMPLETE'", current_scene.get_node("UI/HUD/GameOver").visible and label.text.begins_with("MISSION COMPLETE"))
+	await _shot("the_end.png")
+	var the_end := endings.get_node_or_null("TheEnd") as TextureRect
+	var astronaut := endings.get_node_or_null("Astronaut") as Control
+	var spot := astronaut.position if astronaut != null else Vector2.ZERO
+	await create_timer(1.0, true).timeout
+	_check("then THE END (last frame), an astronaut drifting in space, 'Press R for title screen'",
+		the_end != null and the_end.texture.resource_path.ends_with("frame_06.png") and astronaut != null
+		and astronaut.position != spot and current_scene.get_node("UI/HUD/GameOver").visible
+		and label.text == "Press R for title screen")
 
 	_gs.reset()
 	paused = false
