@@ -8,11 +8,17 @@ var _lamp: ColorRect
 
 func _ready() -> void:
 	add_to_group(Interactor.GROUP)
-	_box(Vector2(-22, -30), Vector2(44, 30), Color(0.35, 0.34, 0.38))            # frame
-	_box(Vector2(-18, -27), Vector2(36, 27), Color(0.16, 0.16, 0.19))            # the door
-	for i in 6:                                                                  # hazard stripes
-		_box(Vector2(-18 + i * 6, -8), Vector2(3, 8), Color(0.98, 0.72, 0.1))
-	_lamp = _box(Vector2(-4, -36), Vector2(8, 5), Color.RED)
+	# The door from the shelter furniture sheet, standing in the front wall.
+	var door := Sprite2D.new()
+	door.name = "Art"
+	var art := AtlasTexture.new()
+	art.atlas = preload("res://art/Pixel-Art emergentcy shelter Assets.png")
+	art.region = Rect2(1072, 475, 446, 412)             # the door on the shelter furniture sheet
+	door.texture = art
+	door.scale = Vector2.ONE * 40.0 / door.texture.get_width()
+	door.offset = Vector2(0, -door.texture.get_height() * 0.5)
+	add_child(door)
+	_lamp = _box(Vector2(-4, -42), Vector2(8, 4), Color.RED)
 
 
 func _process(_delta: float) -> void:
@@ -33,7 +39,7 @@ func prompt_text() -> String:
 
 
 func prompt_offset() -> Vector2:
-	return Vector2(0, -40)
+	return Vector2(0, -46)
 
 
 func _box(pos: Vector2, size: Vector2, color: Color) -> ColorRect:

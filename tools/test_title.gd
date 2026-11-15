@@ -33,6 +33,26 @@ func _frames(count: int) -> void:
 		await process_frame
 
 
+## After Play: the intro scene, or straight to the world when there is no video.
+## If the video plays, checks it and skips it. Returns true if it played.
+func _intro() -> bool:
+	var deadline := Time.get_ticks_msec() + 3000
+	while Time.get_ticks_msec() < deadline:
+		await process_frame
+		if current_scene == null:
+			continue
+		if current_scene.scene_file_path == WORLD:
+			return false
+		if current_scene.scene_file_path == "res://scenes/Intro.tscn" and current_scene.call("has_video"):
+			await _frames(30)
+			await _shot("intro.png")
+			var video := current_scene.find_child("Video", true, false) as VideoStreamPlayer
+			_check("the intro video is playing", video != null and video.is_playing())
+			current_scene.call("skip")
+			return true
+	return false
+
+
 func _wait_for_scene(path: String, seconds: float) -> bool:
 	# Real time, not frames: headless frames run much faster than 60 per second.
 	var deadline := Time.get_ticks_msec() + int(seconds * 1000.0)
@@ -89,7 +109,9 @@ func _run() -> void:
 	_gs.consume_oxygen(40)
 	_gs.add_metal(50)
 	button.pressed.emit()
-	_check("Play opens the world", await _wait_for_scene(WORLD, 3.0))
+	var intro_seen := await _intro()
+	_check("Play goes through the intro (%s)" % ("video playing, skipped" if intro_seen else "no .ogv yet: straight on"), true)
+	_check("then (or after skipping) the world", await _wait_for_scene(WORLD, 4.0))
 	_check("Play starts a fresh game (O2 %.0f, metal %d)" % [_gs.oxygen, _gs.metal],
 		_gs.oxygen > 99.0 and _gs.metal == Config.METAL_START and not _gs.game_over)
 	await _frames(20)
@@ -109,7 +131,8 @@ func _run() -> void:
 	# --- Enter starts the game too ---
 	await _frames(5)
 	await _press_key(KEY_ENTER)
-	_check("Enter starts the game", await _wait_for_scene(WORLD, 3.0))
+	await _intro()
+	_check("Enter starts the game", await _wait_for_scene(WORLD, 4.0))
 	_check("the new game is fresh after a game over (O2 %.0f)" % _gs.oxygen,
 		_gs.oxygen > 99.0 and not _gs.game_over)
 

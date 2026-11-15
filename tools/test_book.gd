@@ -149,10 +149,13 @@ func _run() -> void:
 		refinery != null and (refinery.get_node("Sprite") as AnimatedSprite2D).sprite_frames.get_frame_texture("idle", 0).resource_path.ends_with("ore_refinery.png")
 		and _gs.item_count("iron") == 4 and _gs.item_count("aluminum") == 0)
 	refinery.interact(player)
+	var panel: Node = current_scene.get_node("UI/HUD/RefineryPanel")
+	panel.start()
 	_gs.sol_elapsed_seconds = Config.SOL_SECONDS * 0.2
 	for i in 160:
 		_gs._process(0.1)
-	refinery.interact(player)
+	panel.collect()
+	panel.close()
 	_check("E loads the ore; it refines over time on hab power; E collects: %d iron ingots, %d sulfur compounds" % [
 		_gs.item_count("iron_ingot"), _gs.item_count("sulfur_compound")],
 		_gs.item_count("iron_ingot") == 4 and _gs.item_count("sulfur_compound") == 2 and _gs.item_count("iron") == 0)

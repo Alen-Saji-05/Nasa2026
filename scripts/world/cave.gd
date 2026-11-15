@@ -82,6 +82,7 @@ func _ready() -> void:
 	_paint_walls()
 	_place_cliffs()
 	_place_things(rng)
+	_place_paper(cave, layer)
 	_place_doors()
 	_place_player()
 	_make_dark(cave)
@@ -176,6 +177,34 @@ func _faces_south(t: Vector2i) -> bool:
 # ---------------------------------------------------------------------------
 # Deposits, rocks, craters
 # ---------------------------------------------------------------------------
+
+## A Mars fact paper on a free floor tile, if Config.FACTS puts one in this layer.
+func _place_paper(cave: Dictionary, layer: int) -> void:
+	var index := -1
+	for i in Config.FACTS.size():
+		if Config.FACTS[i].where == "%s/%d" % [cave.id, layer]:
+			index = i
+	if index < 0:
+		return
+	var avoid: Array[Vector2i] = [layout.entry_tile, layout.exit_tile, layout.ladder_up_tile, layout.ladder_down_tile]
+	var free: Array[Vector2i] = []
+	for x in layout.size.x:
+		for y in layout.size.y:
+			var t := Vector2i(x, y)
+			if layout.is_walk(t) and layout._used[layout._index(t)] == 0 and not layout._keep.has(t) \
+					and avoid.all(func(a: Vector2i) -> bool: return a == CaveGen.NONE or (a - t).length() > 3.0):
+				free.append(t)
+	if free.is_empty():
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([cave.seed, layer, "paper"])
+	var paper := Node2D.new()
+	paper.set_script(preload("res://scripts/fact_paper.gd"))
+	paper.name = "FactPaper%d" % (index + 1)
+	paper.set("fact", index)
+	paper.position = _tile_centre(free[rng.randi() % free.size()])
+	nodes.add_child(paper)
+
 
 func _place_things(rng: RandomNumberGenerator) -> void:
 	for n in layout.nodes:

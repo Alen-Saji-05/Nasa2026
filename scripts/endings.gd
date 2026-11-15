@@ -5,6 +5,16 @@ extends Control
 ##
 ##   await endings.play(GameState.death_cause)
 
+## The death screen for each way to lose (art/death_Screens).
+const CARDS := {
+	"oxygen": "res://art/death_Screens/Ran Out of Oxygen.png",
+	"water": "res://art/death_Screens/Out of Water Pixel Game Over.png",
+	"hunger": "res://art/death_Screens/Starved_ Game Over Screen.png",
+	"radiation": "res://art/death_Screens/Radioactive Pixel Warning Screen.png",
+	"storm": "res://art/death_Screens/Pixel Dust Storm Warning.png",
+	"time": "res://art/death_Screens/Retro Pixel Death Screen_ You Didn’t Make It in Time.png",
+}
+
 ## True once the last animation has finished (tests read it).
 var finished := false
 
@@ -34,7 +44,116 @@ func play(cause: String) -> void:
 			"radiation": await _irradiate(player, cam)
 			"storm": await _buried(player, cam)
 			_: await _too_late(cam)
+	elif cause != "won":
+		await _wait(0.5)
+	if CARDS.has(cause):
+		await _card(cause)
 	finished = true
+
+
+# --- The death screen: each one arrives in its own way ---
+
+func _card(cause: String) -> void:
+	Dialogue.clear()                             # nothing in front of the death screen
+	var black := _veil(Color.BLACK)
+	var dark := create_tween()
+	dark.tween_property(black, "color:a", 1.0, 0.7)
+	await dark.finished
+	var card := TextureRect.new()
+	card.name = "Card"
+	card.texture = load(CARDS[cause])
+	card.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	card.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(card)
+	card.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	card.pivot_offset = size * 0.5
+	card.modulate.a = 0.0
+	var t := create_tween()
+	match cause:
+		"radiation":
+			# Glitches in, green and unstable, then keeps a sick glow.
+			for i in 7:
+				t.tween_property(card, "modulate", Color(0.8, 1.6, 0.6, 1.0 if i % 2 == 0 else 0.15), 0.07)
+				t.tween_property(card, "position:x", randf_range(-14.0, 14.0), 0.0)
+			t.tween_property(card, "position:x", 0.0, 0.05)
+			t.tween_property(card, "modulate", Color.WHITE, 0.4)
+			await t.finished
+			var specks := _particles(self, 40, Color(0.7, 1.0, 0.3, 0.8), 15.0, 40.0)
+			specks.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+			specks.position = size * 0.5
+			specks.emission_rect_extents = size * 0.5
+			specks.lifetime = 2.5
+			specks.emitting = true
+			_loop(card, "modulate", Color(0.85, 1.25, 0.75), Color.WHITE, 0.8)
+		"storm":
+			# Blown in from the side, dust keeps streaming across it.
+			card.position.x = -size.x * 0.15
+			t.tween_property(card, "modulate:a", 1.0, 0.8)
+			t.parallel().tween_property(card, "position:x", 0.0, 1.0).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
+			var dust := _particles(self, 160, Color(0.85, 0.55, 0.32, 0.55), 280.0, 420.0)
+			dust.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+			dust.position = Vector2(-20, size.y * 0.5)
+			dust.emission_rect_extents = Vector2(10, size.y * 0.55)
+			dust.direction = Vector2(1, 0.08)
+			dust.spread = 5.0
+			dust.lifetime = 3.5
+			dust.emitting = true
+			await t.finished
+			_loop(card, "position:x", 3.0, -3.0, 0.12)
+		"oxygen":
+			# Fades in slowly as the last air bubbles drift up.
+			card.scale = Vector2(1.12, 1.12)
+			t.tween_property(card, "modulate:a", 1.0, 1.6)
+			t.parallel().tween_property(card, "scale", Vector2.ONE, 2.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+			var bubbles := _particles(self, 30, Color(0.55, 0.8, 1.0, 0.6), 20.0, 45.0)
+			bubbles.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+			bubbles.position = Vector2(size.x * 0.5, size.y + 10.0)
+			bubbles.emission_rect_extents = Vector2(size.x * 0.45, 4)
+			bubbles.direction = Vector2.UP
+			bubbles.spread = 10.0
+			bubbles.lifetime = 6.0
+			bubbles.scale_amount_min = 2.0
+			bubbles.scale_amount_max = 5.0
+			bubbles.emitting = true
+			await t.finished
+			_loop(card, "modulate", Color(0.8, 0.85, 1.0), Color.WHITE, 1.6)
+		"water":
+			# Wavers in like a mirage in the heat.
+			t.tween_property(card, "modulate:a", 1.0, 1.2)
+			for i in 8:
+				t.parallel().tween_property(card, "scale:x", 1.04 if i % 2 == 0 else 0.98, 0.15).set_delay(i * 0.15)
+			t.tween_property(card, "scale", Vector2.ONE, 0.3)
+			await t.finished
+			_loop(card, "scale:x", 1.01, 0.995, 0.5)
+		"hunger":
+			# Sinks in, heavy and slow, and slumps once.
+			card.position.y = -size.y * 0.08
+			t.tween_property(card, "modulate:a", 1.0, 1.4)
+			t.parallel().tween_property(card, "position:y", 0.0, 1.4).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+			await t.finished
+			_loop(card, "modulate", Color(0.8, 0.8, 0.8), Color.WHITE, 1.4)
+		_:
+			# Out of time: slams in, then ticks like a clock.
+			card.scale = Vector2(1.8, 1.8)
+			t.tween_property(card, "modulate:a", 1.0, 0.15)
+			t.parallel().tween_property(card, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			await t.finished
+			var cam := get_viewport().get_camera_2d()
+			if cam != null:
+				_shake(cam, 8)
+			var tick := create_tween().set_loops()
+			tick.tween_property(card, "scale", Vector2(1.03, 1.03), 0.06)
+			tick.tween_property(card, "scale", Vector2.ONE, 0.2)
+			tick.tween_interval(0.74)
+	await _wait(0.4)
+
+
+## Keeps a property swinging between two values (until the scene changes).
+func _loop(node: Node, property: String, a: Variant, b: Variant, seconds: float) -> void:
+	var t := create_tween().set_loops()
+	t.tween_property(node, property, a, seconds).set_trans(Tween.TRANS_SINE)
+	t.tween_property(node, property, b, seconds).set_trans(Tween.TRANS_SINE)
 
 
 # --- The ways to lose ---

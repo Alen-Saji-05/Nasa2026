@@ -5,12 +5,20 @@ extends Node2D
 ## Radiation and dust storms cannot hurt the player here (GameState.in_shelter),
 ## but they keep running outside: the window and the wall screen show them.
 
-const ROOM := Rect2(0, 0, 240, 150)          # the floor, in pixels
-const VIEW := Rect2(-40, -64, 320, 250)      # what the camera may show
+const ROOM := Rect2(0, 0, 196, 120)          # the floor, in pixels
+## What the camera shows: same size as before the room got smaller, so the
+## astronaut keeps its size and the room looks snug, with dark space around it.
+const VIEW := Rect2(-62, -79, 320, 250)
 const GRATE := preload("res://art/overlays/metal_grate.png")
 const CRATE := preload("res://art/new_sprites/research_sites/04_electronics_storage_crate.png")
-const CONSOLE := preload("res://art/new_sprites/spaceship_components/Satellite_Communications_Console.png")
-const LIFE_SUPPORT := preload("res://art/new_sprites/spaceship_components/life_Support_Refill_Station.png")
+## The shelter furniture sheet: bed corner, radiation monitor desk, supply shelf,
+## O2 tanks and the door. Decoration only (the door art is used by shelter_door.gd).
+const SHEET := preload("res://art/Pixel-Art emergentcy shelter Assets.png")
+const BED := Rect2(202, 18, 572, 410)
+const DESK := Rect2(902, 16, 595, 412)
+const SHELF := Rect2(143, 487, 422, 398)
+const O2_TANKS := Rect2(638, 490, 350, 396)
+const DOOR := Rect2(1072, 475, 446, 412)
 const DOOR_SCRIPT := preload("res://scripts/shelter_door.gd")
 
 const WALL := Color(0.55, 0.53, 0.58)
@@ -84,12 +92,10 @@ func _build_room() -> void:
 	_rect(room, Rect2(-16, -50, 16, ROOM.size.y + 66), WALL_DARK)
 	_rect(room, Rect2(ROOM.end.x, -50, 16, ROOM.size.y + 66), WALL_DARK)
 	_rect(room, Rect2(-16, ROOM.end.y, ROOM.size.x + 32, 16), WALL)
-	for x in [110, 130, 216]:                                                         # glowing wall lights
-		_rect(room, Rect2(x - 7, -36, 14, 6), GLOW)
-	_rect(room, Rect2(8, -42, 44, 28), WALL_DARK)                               # the window
-	_window = _rect(room, Rect2(11, -39, 38, 22), Color.BLACK)
+	_rect(room, Rect2(158, -44, 32, 20), WALL_DARK)                             # a porthole to the outside
+	_window = _rect(room, Rect2(161, -41, 26, 14), Color.BLACK)
 	_screen = Label.new()
-	_screen.position = Vector2(8, -13)
+	_screen.position = Vector2(66, -43)
 	_screen.scale = Vector2(0.25, 0.25)
 	_screen.add_theme_font_size_override("font_size", 22)
 	_screen.add_theme_color_override("font_outline_color", Color.BLACK)
@@ -106,16 +112,12 @@ func _build_room() -> void:
 
 	# Furniture (each solid at its base).
 	var entities := $Entities
-	var bunk := Node2D.new()
-	bunk.position = Vector2(8, 100)
-	entities.add_child(bunk)
-	_rect(bunk, Rect2(0, -34, 56, 34), WALL_DARK)
-	_rect(bunk, Rect2(2, -32, 52, 22), Color(0.33, 0.42, 0.55))
-	_rect(bunk, Rect2(4, -30, 14, 10), Color(0.85, 0.85, 0.8))
-	_solid(bunk, Rect2(0, -34, 56, 34))
-	_sprite(entities, CONSOLE, 46.0, Vector2(100, 10))
-	_sprite(entities, LIFE_SUPPORT, 50.0, Vector2(186, 12))
-	_sprite(entities, CRATE, 28.0, Vector2(222, 140))
+	# Along the back wall: bed corner (with its lamp and plant shelf), desk, O2 tanks, supplies.
+	_sprite(entities, piece(BED), 64.0, Vector2(33, 12), "Bed")
+	_sprite(entities, piece(DESK), 58.0, Vector2(95, 12), "Desk")
+	_sprite(entities, piece(O2_TANKS), 28.0, Vector2(139, 12), "O2Tanks")
+	_sprite(entities, piece(SHELF), 36.0, Vector2(174, 12), "Shelf")
+	_sprite(entities, CRATE, 28.0, Vector2(180, 112), "Crate")
 
 	var door := Node2D.new()
 	door.name = "Door"
@@ -147,9 +149,19 @@ func _solid(body: Node, r: Rect2) -> void:
 	body.add_child(collision)
 
 
+## One picture cut out of the furniture sheet.
+static func piece(region: Rect2) -> AtlasTexture:
+	var tex := AtlasTexture.new()
+	tex.atlas = SHEET
+	tex.region = region
+	return tex
+
+
 ## A picture standing on `feet`, `width` pixels wide, solid at its base.
-func _sprite(parent: Node, tex: Texture2D, width: float, feet: Vector2) -> void:
+func _sprite(parent: Node, tex: Texture2D, width: float, feet: Vector2, title := "") -> void:
 	var holder := Node2D.new()
+	if title != "":
+		holder.name = title
 	holder.position = feet
 	parent.add_child(holder)
 	var sprite := Sprite2D.new()

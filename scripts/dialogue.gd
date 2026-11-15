@@ -67,6 +67,7 @@ const LINES := {
 	"food_grow": "(Hint: the Greenhouse in the Build Book grows potatoes. Keep 2 potatoes to plant as seeds!)",
 	"hint_oxygen": "My suit's oxygen keeps dropping. The tanks won't last forever - I need an Oxygen Generator. (Hint: see the Build Book.)",
 	"hint_water": "Throat's dry... water is getting low. There's ice in the Ice Cave I can melt. (Hint: press E on ice deposits.)",
+	"power_low": "MC:SOL30, your battery is down to 15 and falling! EVERYTHING runs on power: the oxygen, the refinery, every machine. At zero they all stop, and you could die very quickly. Build a Solar Panel to harvest energy from the Sun - it's in your Build Book (B).",
 	"hint_power": "The battery is draining - the refinery eats power. A Solar Panel would recharge it every day. (Hint: see the Build Book.)",
 	"hint_battery": "Night falls and my power dies with the sun. A Battery would store daytime power for the night.",
 	"hint_reservoir": "My water tank is full and I'm wasting ice. A Water Reservoir Tank would let me store more.",

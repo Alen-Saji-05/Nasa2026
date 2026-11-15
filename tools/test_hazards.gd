@@ -215,7 +215,7 @@ func _run() -> void:
 	await _walk("ui_left", 0.4)
 	var moved := _player().position.x < start.x - 10
 	await _walk("ui_down", 1.0)
-	_check("the player can walk inside but not through the front wall (y %.0f)" % _player().position.y, moved and _player().position.y < 150.0)
+	_check("the player can walk inside but not through the front wall (y %.0f)" % _player().position.y, moved and _player().position.y < 120.0)
 	await _shot("shelter_inside.png")
 	before = _gs.health
 	var rad_left: float = _hz.rad_left
@@ -223,7 +223,7 @@ func _run() -> void:
 	_check("inside: no radiation damage, but the event keeps running outside (%.0f s -> %.0f s left)" % [rad_left, _hz.rad_left],
 		is_equal_approx(_gs.health, before) and _hz.rad_left < rad_left and _hz.radiation == "active")
 	var door: Node2D = current_scene.get_node("Entities/Door")
-	_player().position = Vector2(120, 140)
+	_player().position = door.position + Vector2(0, -22)
 	await _wait(0.6)
 	_messages.clear()
 	_hand().use()
@@ -290,7 +290,7 @@ func _run() -> void:
 	_step(Config.STORM_CLEAR, true)
 	_check("the storm settles completely: 'The dust storm has passed.'", _hz.storm == "" and _hz.intensity == 0.0
 		and _heard("The dust storm has passed."))
-	_player().position = Vector2(120, 140)
+	_player().position = (current_scene.get_node("Entities/Door") as Node2D).position + Vector2(0, -22)
 	await _wait(0.6)
 	_hand().use()
 	_check("and out again", await _until(func() -> bool: return _in_scene(Config.WORLD_SCENE)))

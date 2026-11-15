@@ -2,7 +2,8 @@ extends Control
 ## Title screen. Shows art/title_screen.png (the SOL30 logo with a painted "Play"
 ## button) and puts an invisible button exactly on top of the painted one.
 ##
-## Start the game with a click on Play, or with Enter / Space.
+## Start the game with a click on Play, or with Enter / Space. The intro video
+## plays first (scenes/Intro.tscn), then the world.
 ## The picture keeps its shape in any window size (dark bars fill the rest).
 
 ## Where the painted Play button is inside the picture, in picture pixels.
@@ -43,7 +44,7 @@ func start_game() -> void:
 	GameState.reset()
 	var tween := create_tween()
 	tween.tween_property(fade, "color:a", 1.0, fade_seconds)
-	tween.tween_callback(get_tree().change_scene_to_file.bind(Config.WORLD_SCENE))
+	tween.tween_callback(get_tree().change_scene_to_file.bind(Config.INTRO_SCENE))   # the intro video, then the game
 
 
 ## Where the picture really is on screen: it is scaled to fit and centred.

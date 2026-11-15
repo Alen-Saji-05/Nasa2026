@@ -14,6 +14,7 @@ extends StaticBody2D
 ## Press E next to a machine to see what it is doing.
 
 const GROUP := "machines"
+const RefineryPanel := preload("res://scripts/refinery_panel.gd")
 const FPS := 6.0
 
 @export var machine_id: String = ""
@@ -21,6 +22,8 @@ const FPS := 6.0
 var pad_id: String = ""
 
 var _launching := false
+var _base_scale := Vector2.ONE
+var _pop := 0.0                              # the refinery's "ready" bounce
 
 @onready var sprite: AnimatedSprite2D = $Sprite
 @onready var collision: CollisionShape2D = $CollisionShape2D
@@ -48,10 +51,14 @@ func _ready() -> void:
 	warning.texture = load(Config.MACHINE_WARNING_ICON)
 	warning.position = Vector2(0, -height() - 6)
 	warning.visible = false
+	_base_scale = sprite.scale
+	if def.get("acts_as", "") == "refinery":
+		GameState.refinery_done.connect(_on_refinery_done)
 	_update_look()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_pop = maxf(0.0, _pop - delta * 1.5)
 	if not _launching:
 		_update_look()
 
@@ -86,6 +93,10 @@ func status_text() -> String:
 			return "%s: making %.1f power" % [name_text, Config.BACKUP_OUTPUT]
 		"water_tank":
 			return "%s: water limit %d" % [name_text, roundi(GameState.water_limit)]
+		"refinery":
+			if GameState.refinery_left() > 0:
+				return "%s: refining, %s left" % [name_text, RefineryPanel._clock_text(GameState.refinery_seconds_left())]
+			return "%s: %s" % [name_text, "ready to collect" if GameState.refinery_ready() else "idle"]
 		"greenhouse":
 			return "%s: growing (%d potatoes ready)" % [name_text, GameState.machine_output.get("potato", 0)]
 		"shelter":
@@ -102,7 +113,11 @@ func status_text() -> String:
 func interact(_player: Node2D) -> void:
 	match Config.machine(machine_id).get("acts_as", machine_id):
 		"refinery":
-			GameState.say(GameState.use_refinery())
+			var panel := get_tree().current_scene.get_node_or_null("UI/HUD/RefineryPanel")
+			if panel != null:
+				panel.call("open", self)
+			else:
+				GameState.say(status_text())
 		"co2_capture":
 			var got := GameState.collect_output(["co2"])
 			GameState.say("Collected " + got if got != "" else status_text())
@@ -143,6 +158,9 @@ func _update_look() -> void:
 			_show_level(GameState.water / maxf(1.0, GameState.water_limit))
 		"refinery":
 			_set_working(GameState.refinery_working())
+			if GameState.refinery_left() > 0 and not GameState.o2_generator_powered:
+				problem = "no power"
+			_refinery_look()
 		"greenhouse":
 			_play("idle")
 			sprite.modulate = Color(1.15, 1.25, 1.0) if GameState.machine_output.get("potato", 0) > 0 else Color.WHITE
@@ -182,6 +200,85 @@ func _play(anim: String) -> void:
 		anim = "idle"
 	if sprite.animation != anim or not sprite.is_playing():
 		sprite.play(anim)
+
+
+## The refinery's countdown clock above it, and its "ready" animation: it bounces,
+## glows gold, sparkles and shows READY! until the batch is collected.
+func _refinery_look() -> void:
+	var clock := get_node_or_null("Clock") as Node2D
+	if clock == null:
+		clock = Node2D.new()
+		clock.name = "Clock"
+		clock.z_index = 40
+		var label := Label.new()
+		label.name = "Time"
+		label.add_theme_font_size_override("font_size", 18)
+		label.add_theme_color_override("font_outline_color", Color(0.1, 0.05, 0.04))
+		label.add_theme_constant_override("outline_size", 6)
+		label.scale = Vector2(0.5, 0.5)
+		label.position = Vector2(-2, -7)
+		clock.add_child(label)
+		clock.draw.connect(func() -> void:
+			var busy := GameState.refinery_left() > 0
+			RefineryPanel.draw_clock(clock, Vector2(-9, 0), 5.5,
+				1.0 - GameState.refinery_seconds_left() / maxf(0.01, GameState.refinery_total),
+				busy, not busy and GameState.refinery_ready()))
+		add_child(clock)
+		var sparks := CPUParticles2D.new()
+		sparks.name = "Sparks"
+		sparks.amount = 14
+		sparks.lifetime = 0.9
+		sparks.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+		sparks.emission_rect_extents = Vector2(height() * 0.35, height() * 0.3)
+		sparks.position = Vector2(0, -height() * 0.5)
+		sparks.direction = Vector2.UP
+		sparks.spread = 40.0
+		sparks.gravity = Vector2(0, 20)
+		sparks.initial_velocity_min = 10.0
+		sparks.initial_velocity_max = 25.0
+		sparks.scale_amount_min = 1.0
+		sparks.scale_amount_max = 2.0
+		sparks.color = Color(1.0, 0.9, 0.4)
+		sparks.emitting = false
+		add_child(sparks)
+	var busy := GameState.refinery_left() > 0
+	var ready := not busy and GameState.refinery_ready()
+	var t := Time.get_ticks_msec() * 0.001
+	clock.visible = busy or ready
+	var label := clock.get_node("Time") as Label
+	if busy:
+		label.text = RefineryPanel._clock_text(GameState.refinery_seconds_left())
+		label.add_theme_color_override("font_color", Color.WHITE if GameState.o2_generator_powered else Color(1.0, 0.45, 0.35))
+		clock.position = Vector2(0, -height() - 22)
+	elif ready:
+		label.text = "READY!"
+		label.add_theme_color_override("font_color", Color(0.5, 1.0, 0.45))
+		clock.position = Vector2(0, -height() - 22 + sin(t * 5.0) * 2.0)
+	clock.queue_redraw()
+	(get_node("Sparks") as CPUParticles2D).emitting = ready
+	var bounce := (0.03 * absf(sin(t * 4.0)) if ready else 0.0) + _pop * 0.25
+	sprite.scale = _base_scale * Vector2(1.0 - bounce * 0.5, 1.0 + bounce)
+	sprite.modulate = Color.WHITE.lerp(Color(1.35, 1.2, 0.7), 0.5 + 0.5 * sin(t * 5.0)) if ready else Color.WHITE
+
+
+func _on_refinery_done() -> void:
+	_pop = 1.0
+	var burst := CPUParticles2D.new()
+	burst.position = Vector2(0, -height() * 0.6)
+	burst.one_shot = true
+	burst.explosiveness = 1.0
+	burst.amount = 30
+	burst.lifetime = 0.8
+	burst.spread = 180.0
+	burst.gravity = Vector2(0, 40)
+	burst.initial_velocity_min = 30.0
+	burst.initial_velocity_max = 60.0
+	burst.scale_amount_min = 1.5
+	burst.scale_amount_max = 2.5
+	burst.color = Color(1.0, 0.85, 0.35)
+	add_child(burst)
+	burst.emitting = true
+	burst.finished.connect(burst.queue_free)
 
 
 ## Picks a "levels" frame: 0 = empty, last = full. Empty only at (almost) zero.

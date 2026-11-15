@@ -138,6 +138,7 @@ const TEX_CAVE_MOUTH := preload("res://art/placeholders/cave_entrance_placeholde
 const TEX_BUILD_PAD := preload("res://art/placeholders/build_pad_placeholder.png")
 
 const RESOURCE_NODE_SCRIPT := preload("res://scripts/resource_node.gd")
+const FACT_PAPER_SCRIPT := preload("res://scripts/fact_paper.gd")
 const CRATER_SCRIPT := preload("res://scripts/crater_hazard.gd")
 const BUILD_PAD_SCRIPT := preload("res://scripts/build_pad.gd")
 const CAVE_ENTRANCE_SCRIPT := preload("res://scripts/cave_entrance.gd")
@@ -175,6 +176,7 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_setup_camera)
 	_setup_day_night()
 	_setup_ice_spawns()
+	_setup_papers()
 	var dialogue := get_node_or_null("/root/Dialogue")
 	if dialogue != null:
 		dialogue.once("intro", true)
@@ -241,6 +243,38 @@ func _setup_ice_spawns() -> void:
 		_add_spawned_ice(id, false)
 	state.ice_spawned.connect(_add_spawned_ice.bind(true))
 	state.ice_removed.connect(_remove_spawned_ice)
+
+
+## Mars fact papers on the surface: open spots far from the base and from each other,
+## chosen once per run. Fresh ice never appears on top of them.
+func _setup_papers() -> void:
+	var state := get_node_or_null("/root/GameState")
+	if state == null:
+		return
+	if state.paper_spots.is_empty():
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 30
+		var base := _tile_centre(SPAWN_TILE)
+		var spots: Array = state.ice_spawn_spots.duplicate()
+		if spots.is_empty():
+			return
+		for i in Config.FACTS.size():
+			if Config.FACTS[i].where != "surface":
+				continue
+			for attempt in 200:
+				var p: Vector2 = spots[rng.randi() % spots.size()]
+				if p.distance_to(base) > 70.0 and state.paper_spots.values().all(func(q: Vector2) -> bool: return q.distance_to(p) > 110.0):
+					state.paper_spots[i] = p
+					break
+		state.ice_spawn_spots = state.ice_spawn_spots.filter(func(p: Vector2) -> bool:
+			return state.paper_spots.values().all(func(q: Vector2) -> bool: return q.distance_to(p) > 28.0))
+	for i: int in state.paper_spots:
+		var paper := Node2D.new()
+		paper.set_script(FACT_PAPER_SCRIPT)
+		paper.name = "FactPaper%d" % (i + 1)
+		paper.set("fact", i)
+		paper.position = state.paper_spots[i]
+		get_node("Entities/Nodes").add_child(paper)
 
 
 ## Floor tile centres with no rock around and nothing built or placed close by.

@@ -38,7 +38,8 @@ func check() -> String:
 		# The first steps.
 		[t > 25.0 and not gs.wreck_salvaged, "hint_wreck", ["wreck"]],
 		[t > 35.0 and gs.discovered.has("iron") and not gs.has_built("ore_refinery"), "hint_refinery", ["book:ore_refinery"]],
-		# Power.
+		# Power: the hab battery runs down from the start; the first warning comes early.
+		[gs.machine_count("solar") == 0 and gs.battery_charge <= Config.POWER_LOW_HINT, "power_low", ["power", "book:solar"]],
 		[gs.has_built("ore_refinery") and gs.machine_count("solar") == 0 and gs.battery_charge < gs.battery_capacity() * 0.35,
 			"hint_power", ["power", "book:solar"]],
 		[gs.machine_count("solar") > 0 and gs.machine_count("battery") == 0 and gs.sun < 0.1 and gs.battery_charge < gs.battery_capacity() * 0.4,

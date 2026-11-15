@@ -128,7 +128,31 @@ func _run() -> void:
 	_player().global_position = refinery.global_position + Vector2(0, 16)
 	await _wait(0.6)
 	hand.use()
-	_check("E loads every carried ore: '%s'" % _last(), _gs.refinery_left() == 4 and _gs.item_count("iron") == 0 and _gs.item_count("sulfur") == 0)
+	var panel: Control = current_scene.get_node("UI/HUD/RefineryPanel")
+	_check("E opens the refinery panel, every carried ore ticked with all of it", panel.visible
+		and panel.selection() == {"iron": 2, "sulfur": 2})
+	panel.set_picked("sulfur", false)
+	panel.change("iron", -1)
+	_check("untick an ore and use - / +: %s" % panel.selection(), panel.selection() == {"iron": 1})
+	var typed: LineEdit = panel.get_node("Panel").find_child("Amount", true, false)
+	typed.text = "7"
+	typed.text_changed.emit("7")
+	_check("the amount can be typed in too, and is kept to what you carry: '%s'" % typed.text,
+		typed.text == "2" and panel.selection().get("iron", 0) == 2)
+	typed.text = "1"
+	typed.text_changed.emit("1")
+	panel.change("iron", 5)
+	panel.change("sulfur", 1)
+	_check("+ never goes above what you carry, and ticks the ore: %s" % panel.selection(),
+		panel.selection() == {"iron": 2, "sulfur": 2})
+	panel.start()
+	await _wait(0.05)
+	var clock_label: Label = refinery.get_node("Clock/Time")
+	_check("START loads only the choice; the clock counts down from %s" % clock_label.text,
+		_gs.refinery_left() == 4 and _gs.item_count("iron") == 0 and _gs.item_count("sulfur") == 0
+		and _gs.refinery_seconds_left() > Config.REFINE_SECONDS * 4.0 - 0.5 and clock_label.text == "0:08"
+		and refinery.get_node("Clock").visible)
+	panel.close()
 	_set_time(true)
 	_gs.battery_charge = 0.0
 	_step(3.0)
@@ -139,9 +163,16 @@ func _run() -> void:
 	await _wait(0.05)
 	_check("with power it refines one ore every %.0f s" % Config.REFINE_SECONDS,
 		_gs.refinery_left() == 0 and _gs.machine_output.get("iron_ingot", 0) == 2 and _gs.machine_output.get("sulfur_compound", 0) == 2)
+	_check("when done: READY! above it, sparkles, '%s'" % _last(), clock_label.text == "READY!" and _gs.refinery_ready()
+		and (refinery.get_node("Sparks") as CPUParticles2D).emitting and _last().contains("ready"))
 	await _wait(0.5)
 	hand.use()
-	_check("E collects: '%s'" % _last(), _gs.item_count("iron_ingot") == 2 and _gs.item_count("sulfur_compound") == 2)
+	await _wait(0.05)
+	await _shot("refinery_panel.png")
+	panel.collect()
+	_check("E + COLLECT takes the ingots: '%s'" % _last(), _gs.item_count("iron_ingot") == 2 and _gs.item_count("sulfur_compound") == 2
+		and not _gs.refinery_ready())
+	panel.close()
 
 	# --- power: solar and battery ---
 	for id: String in ["iron_ingot", "aluminum_ingot", "sulfur_compound", "electronics", "wire"]:

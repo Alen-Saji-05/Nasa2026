@@ -34,6 +34,8 @@ signal deposits_changed
 ## A fresh ice deposit appeared on the surface / a used-up one melted away (world_gen.gd).
 signal ice_spawned(id: String)
 signal ice_removed(id: String)
+## The refinery finished its batch: the ingots are ready to collect.
+signal refinery_done
 
 var sol_elapsed_seconds: float = 0.0
 var sol_number: int = 1
@@ -59,6 +61,10 @@ var ice_spawns: Dictionary = {}
 ## Open surface spots where fresh ice can appear (world_gen.gd fills this).
 var ice_spawn_spots: Array = []
 var _ice_time := 0.0
+## Mars fact papers: which have been read (Config.FACTS indexes), and where the
+## surface ones lie (index -> position, chosen once by world_gen.gd).
+var facts_read: Array[int] = []
+var paper_spots: Dictionary = {}
 var _ice_serial := 0
 
 var zero_oxygen_time: float = 0.0
@@ -101,6 +107,8 @@ var story_seen: Dictionary = {}
 var refinery_queue: Dictionary = {}
 var machine_output: Dictionary = {}          # item id -> count, collected with E
 var _refine_time := 0.0
+## Seconds the current refinery batch takes in total (for the countdown clock).
+var refinery_total := 0.0
 var _co2_time := 0.0
 ## The lamp from the wreck: switched on at the first nightfall.
 var lamp_found: bool = false
@@ -382,27 +390,34 @@ func salvage_wreck() -> void:
 
 # --- Production: the refinery and the CO2 capture machine ---
 
-## Loads all carried ore into the refinery and collects what is finished.
-## Returns a line for the player.
-func use_refinery() -> String:
+## Loads the chosen ore into the refinery: {"iron": 3, "sulfur": 1}. Never more
+## than the player carries. Returns how many ore went in.
+func refine(selection: Dictionary) -> int:
 	var loaded := 0
-	for ore: String in Config.REFINE:
-		var n := item_count(ore)
-		if n > 0:
-			inventory[ore] = 0
-			refinery_queue[ore] = refinery_queue.get(ore, 0) + n
-			loaded += n
+	for ore: String in selection:
+		var n := mini(int(selection[ore]), item_count(ore))
+		if not Config.REFINE.has(ore) or n <= 0:
+			continue
+		inventory[ore] = item_count(ore) - n
+		refinery_queue[ore] = refinery_queue.get(ore, 0) + n
+		loaded += n
 	if loaded > 0:
+		refinery_total = refinery_seconds_left()
 		inventory_changed.emit()
-	var got := collect_output(Config.REFINE.values())
-	var parts: Array[String] = []
-	if got != "":
-		parts.append("Collected " + got)
-	if loaded > 0:
-		parts.append("Loaded %d ore" % loaded)
-	if parts.is_empty():
-		return "Ore Refinery: empty. Bring Iron Ore, Aluminum Ore or Sulfur."
-	return ". ".join(parts) + (" (%d still refining)" % refinery_left() if refinery_left() > 0 else "")
+	return loaded
+
+
+## Seconds until the refinery has finished everything it holds.
+func refinery_seconds_left() -> float:
+	return maxf(0.0, refinery_left() * Config.REFINE_SECONDS - _refine_time)
+
+
+## True when finished ingots / compounds are waiting in the refinery.
+func refinery_ready() -> bool:
+	for id: String in Config.REFINE.values():
+		if machine_output.get(id, 0) > 0:
+			return true
+	return false
 
 
 func refinery_left() -> int:
@@ -435,6 +450,7 @@ func co2_capture_working() -> bool:
 
 func _run_production(delta: float) -> void:
 	if refinery_working():
+		var had := refinery_left()
 		_refine_time += delta
 		while _refine_time >= Config.REFINE_SECONDS and refinery_left() > 0:
 			_refine_time -= Config.REFINE_SECONDS
@@ -444,6 +460,10 @@ func _run_production(delta: float) -> void:
 					var made: String = Config.REFINE[ore]
 					machine_output[made] = machine_output.get(made, 0) + 1
 					break
+		if had > 0 and refinery_left() == 0:
+			_refine_time = 0.0
+			refinery_done.emit()
+			say("Ore Refinery: your batch is ready! Press E at the refinery to collect it.")
 	if machine_count("greenhouse") > 0:
 		_grow_time += delta
 		while _grow_time >= Config.GREENHOUSE_SECONDS:
@@ -498,6 +518,12 @@ func spawn_ice() -> String:
 	ice_spawned.emit(id)
 	say("Fresh ice has been exposed somewhere on the surface!")
 	return id
+
+
+## A fact paper was read (fact_viewer.gd).
+func read_fact(index: int) -> void:
+	if not facts_read.has(index):
+		facts_read.append(index)
 
 
 ## True if the inventory holds everything in `cost` (item id -> amount).
@@ -665,6 +691,7 @@ func reset() -> void:
 	death_cause = ""
 	ice_empty_since.clear()
 	ice_spawns.clear()
+	facts_read.clear()
 	_ice_time = 0.0
 	in_shelter = false
 	_grow_time = 0.0
@@ -687,6 +714,7 @@ func reset() -> void:
 	refinery_queue.clear()
 	machine_output.clear()
 	_refine_time = 0.0
+	refinery_total = 0.0
 	_co2_time = 0.0
 	var dialogue := (get_node_or_null("/root/Dialogue") if is_inside_tree() else null)
 	if dialogue != null:

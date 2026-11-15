@@ -69,6 +69,8 @@ func _ready() -> void:
 	GameState.day_night_changed.connect(update_sol)
 	GameState.inventory_changed.connect(update_inventory)
 	add_child(preload("res://scripts/build_book.gd").new())
+	add_child(preload("res://scripts/refinery_panel.gd").new())
+	add_child(preload("res://scripts/fact_viewer.gd").new())
 	update_inventory()
 	GameState.inventory_changed.connect(func() -> void: update_health(GameState.health, false))
 	_make_location_label()
@@ -147,8 +149,10 @@ func update_power() -> void:
 	var net := GameState.power_made - GameState.power_used
 	_power_label.text = "Power %s%.1f/s   Battery %d/%d" % [
 		"+" if net >= 0.0 else "", net, roundi(GameState.battery_charge), roundi(GameState.battery_capacity())]
+	var low := GameState.machine_count("solar") == 0 and GameState.battery_charge <= Config.POWER_LOW_HINT
 	_power_label.add_theme_color_override("font_color",
-		Color(1.0, 0.55, 0.45) if net < 0.0 and GameState.battery_charge < 5.0 else Color(1.0, 0.92, 0.75))
+		Color(1.0, 0.55, 0.45) if low or (net < 0.0 and GameState.battery_charge < 5.0) else Color(1.0, 0.92, 0.75))
+	_set_blink(_power_label, low)
 
 
 func _make_location_label() -> void:
@@ -266,9 +270,26 @@ func _on_game_ended(reason: String) -> void:
 		return                                   # restarted meanwhile
 	if GameState.game_won:
 		game_over_label.text = "MISSION COMPLETE\n\n%s\n\nPress R to play again" % reason
-	else:
-		game_over_label.text = "%s\n\nPress R to restart" % reason
+		game_over_panel.show()
+		return
+	# A death: the ending left its death screen up; only "Press R" goes on top of it.
+	game_over_panel.color = Color(0, 0, 0, 0)
+	game_over_label.text = "Press R to restart"
+	game_over_label.add_theme_font_override("font", preload("res://art/fonts/PixelifySans.ttf"))
+	game_over_label.add_theme_font_size_override("font_size", 30)
+	game_over_label.add_theme_color_override("font_color", Color(1.0, 0.93, 0.8))
+	game_over_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	game_over_label.add_theme_constant_override("outline_size", 8)
+	game_over_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	game_over_label.offset_bottom = -size.y * 0.1
+	game_over_label.modulate.a = 0.0
 	game_over_panel.show()
+	var blink := game_over_label.create_tween()
+	blink.tween_property(game_over_label, "modulate:a", 1.0, 0.6)
+	blink.tween_callback(func() -> void:
+		var loop := game_over_label.create_tween().set_loops()
+		loop.tween_property(game_over_label, "modulate:a", 0.35, 0.7)
+		loop.tween_property(game_over_label, "modulate:a", 1.0, 0.7))
 
 
 func _unhandled_input(event: InputEvent) -> void:

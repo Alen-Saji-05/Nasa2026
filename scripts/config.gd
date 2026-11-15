@@ -6,6 +6,10 @@ extends RefCounted
 # --- Scenes ---
 const TITLE_SCENE := "res://scenes/TitleScreen.tscn"
 const WORLD_SCENE := "res://scenes/World.tscn"
+## The intro video after Play (scripts/intro.gd). Godot plays Ogg Theora (.ogv) only:
+## art/video/intro.mp4 converted to this file.
+const INTRO_SCENE := "res://scenes/Intro.tscn"
+const INTRO_VIDEO := "res://art/video/intro.ogv"
 
 # --- Time ---
 const SOL_SECONDS := 60.0                    # 1 sol (Mars day) in real seconds
@@ -33,6 +37,7 @@ const O2_GEN_WATER_PER_SEC := 0.15
 
 # --- Power (GAME_FLOW Part 8) ---
 const HAB_BATTERY_CAPACITY := 20.0           # the hab's own battery; it starts full
+const POWER_LOW_HINT := 15.0                 # battery at or below this with no Solar Panel: Mission Control warns
 const BATTERY_CAPACITY_BONUS := 40.0         # each Battery machine adds this much storage
 const SOLAR_OUTPUT := 3.0                    # power per second from one panel in full sun
 const BACKUP_OUTPUT := 2.0                   # power per second from Backup power, day and night
@@ -149,6 +154,30 @@ const CAVES: Array[Dictionary] = [
 			{"cols": 6, "rows": 5, "ores": ["aluminum", "aluminum", "electronics"], "metal": 3, "ice": 0, "guarded": 2, "crater_chance": 0.5, "loops": 2},
 		],
 	},
+]
+
+
+# --- Mars fact papers (fact_paper.gd on the map, fact_viewer.gd full screen) ---
+## "where" is "surface" or "<cave id>/<layer index>".
+const FACTS: Array[Dictionary] = [
+	{"where": "surface", "title": "The God of War",
+		"text": "Named after the Roman God of war, Mars is the fourth planet from the Sun in our Solar System."},
+	{"where": "surface", "title": "The Red Planet",
+		"text": "Mars is also known as the ‘Red Planet’ because, well, it’s red! This signature colour comes from the large amount of a chemical called iron oxide (or ‘rust’ as you might know it) in its rocks and soil."},
+	{"where": "ore/0", "title": "Small but Mighty",
+		"text": "Mars is the second smallest planet in the solar system after Mercury. With a diameter (distance through the middle) of 6,791 kilometres, it’s roughly half the size of Earth."},
+	{"where": "ice/0", "title": "Brr! So Cold",
+		"text": "It can get pretty cold on Mars –– much colder than our own planet, since it’s further away from the Sun. At the equator, temperatures can reach 20°C, but at its poles they can plummet to as low as -140°C. Brr!"},
+	{"where": "ore/1", "title": "Olympus Mons",
+		"text": "Mars is home to the highest mountain in our solar system –– a volcano called Olympus Mons. Standing a whopping 24 kilometres high, it’s about three times the height of Mount Everest!"},
+	{"where": "deep/1", "title": "Boing!",
+		"text": "You could jump around three times higher on Mars than you can on Earth. Boing! This is because the planet’s gravity – the force that keeps us on the ground – is much weaker."},
+	{"where": "surface", "title": "Two Moons",
+		"text": "Do you like to look at the Moon at night? Well, check this out – Mars has two moons! One is called Phobos and the other Deimos."},
+	{"where": "surface", "title": "Days and Years",
+		"text": "A day on Mars is 24 hours and 37 minutes – only a little bit longer than a day on our own planet. A year on Mars, however, is almost twice as long, lasting 687 Earth days! This is because Mars takes a lot longer than Earth to complete its orbit around the Sun."},
+	{"where": "ice/1", "title": "A Hidden Lake",
+		"text": "Scientists once believed that there was no liquid water on the surface of Mars – only rocks, soil dust and ice. But in 2018, they found evidence of a lake under the planet’s south polar ice cap. Exciting stuff!"},
 ]
 
 

@@ -33,7 +33,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_cooldown = maxf(0.0, _cooldown - delta)
 	_focus = _nearest()
-	_prompt.visible = _focus != null and not GameState.game_over
+	_prompt.visible = _focus != null and not GameState.game_over 		and not get_tree().get_nodes_in_group("modal_ui").any(func(n: CanvasItem) -> bool: return n.visible)
 	if _prompt.visible:
 		var offset := Vector2(0, -20)
 		if _focus.has_method("prompt_offset"):
@@ -112,5 +112,6 @@ func _make_prompt() -> void:
 	_prompt.add_theme_stylebox_override("normal", box)
 	_prompt.scale = Vector2(0.5, 0.5)        # the camera zooms 2x or more, so this stays sharp
 	_prompt.visible = false
+	_prompt.add_to_group("world_prompt")     # full-screen views hide it while the game is paused
 	layer.add_child(_prompt)
 	_prompt.reset_size()
